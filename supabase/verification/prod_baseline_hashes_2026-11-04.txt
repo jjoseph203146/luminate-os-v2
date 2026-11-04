@@ -1,0 +1,92 @@
+function | current_client_id() | secdef=true md5=6bd7add93e0297a451a049a8e59c7e1a
+function | next_request_display_id() | secdef=false md5=cd9b0865e792b26d78e141b37a3a415e
+function | rls_auto_enable() | secdef=true md5=6998ea6b4c2480f5d2e34b5dcf3f8d36
+function | update_updated_at() | secdef=false md5=d43299202a0987f3653ec1f6402e7947
+function | user_role() | secdef=true md5=186027f2b4c03eaae3b1a92bd24c573a
+policy | public.accounts.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.activity_log.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.audits.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.client_documents.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.client_documents.client_select | roles={authenticated} cmd=SELECT PERMISSIVE md5=9c52525da82abbed66b7372ac977a638
+policy | public.client_emails.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.client_notes.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.client_phones.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.client_users.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.client_users.client_select | roles={authenticated} cmd=SELECT PERMISSIVE md5=736853cbbf7f4018b0c1198cac92d5dd
+policy | public.client_websites.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.clients.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.clients.client_select | roles={authenticated} cmd=SELECT PERMISSIVE md5=8621d60bd86dbfaed17050fd1ea32d47
+policy | public.expenses.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.internal_work_items.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.leads.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.notes.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.notifications.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.profiles.own_profile | roles={authenticated} cmd=SELECT PERMISSIVE md5=cc00666ac5d81806b4129769e28761f3
+policy | public.project_services.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.projects.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.projects.client_select | roles={authenticated} cmd=SELECT PERMISSIVE md5=6fd9402d0f68b64dcdd104125d44c1cb
+policy | public.push_subscriptions.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.reports.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.reports.client_select | roles={authenticated} cmd=SELECT PERMISSIVE md5=6fd9402d0f68b64dcdd104125d44c1cb
+policy | public.request_comments.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.request_comments.client_insert | roles={authenticated} cmd=INSERT PERMISSIVE md5=7ee3827b7829a1d230741f6c4dc4eff7
+policy | public.request_comments.client_select | roles={authenticated} cmd=SELECT PERMISSIVE md5=06cd63cc2b5ce650c3c7aeb910777000
+policy | public.request_revisions.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.requests.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.requests.client_select | roles={authenticated} cmd=SELECT PERMISSIVE md5=6fd9402d0f68b64dcdd104125d44c1cb
+policy | public.revenue_events.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.revenue_events.client_select | roles={authenticated} cmd=SELECT PERMISSIVE md5=6fd9402d0f68b64dcdd104125d44c1cb
+policy | public.security_findings.admin_full_access | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.site_issues.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.site_monitor_checks.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.site_monitor_checks.client_select | roles={authenticated} cmd=SELECT PERMISSIVE md5=6fd9402d0f68b64dcdd104125d44c1cb
+policy | public.site_monitors.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.site_monitors.client_select | roles={authenticated} cmd=SELECT PERMISSIVE md5=6fd9402d0f68b64dcdd104125d44c1cb
+policy | public.site_visual_checks.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.site_visual_checks.client_select | roles={authenticated} cmd=SELECT PERMISSIVE md5=6fd9402d0f68b64dcdd104125d44c1cb
+policy | public.subscriptions.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | public.sync_log.admin_full | roles={authenticated} cmd=ALL PERMISSIVE md5=e24b93088ad228b8e6695dc46054f69e
+policy | storage.objects.Service role write screenshots | roles={service_role} cmd=ALL PERMISSIVE md5=7c1a280b63801d5b834cb745ec3081ec
+policy | storage.objects.admin_all_buckets | roles={authenticated} cmd=ALL PERMISSIVE md5=dfc48feb51c139bbe1dbf506e3fdf926
+policy | storage.objects.client_read_own_files | roles={authenticated} cmd=SELECT PERMISSIVE md5=42bfc073f0331d0d92d972ec67b7b32f
+table_columns | accounts | 538041c2f1694060d4acd918f0da3d3a
+table_columns | activity_log | 5bd4ec8a07262523f6ced37c32ab117e
+table_columns | audits | bd6db8b1b4516a77a6ce4384431b2875
+table_columns | client_documents | 974f19f028a9a28a9cd053cbfe95ccb3
+table_columns | client_emails | aebe2020fadac809a87918947c8f66ea
+table_columns | client_notes | 9c415382c0497fd49ab75a91507399bb
+table_columns | client_phones | d94b94a3357bf90c97da4aeb02079bce
+table_columns | client_users | aa716339383a5b1c12026cf13af968b0
+table_columns | client_websites | db0704b6537028717e051e4c587cde8d
+table_columns | clients | 6cb6eee04c938f184ee730f3dd1f3cde
+table_columns | expenses | fed85cd28839bf0417b6022a3161821a
+table_columns | internal_work_items | 8a9f65e37b6bcf6d07e641391b5d2c23
+table_columns | leads | 3a99ff3a62753efa1f11a59293b3333a
+table_columns | notes | 38bb185edc3a29837781b6bc38b7aa87
+table_columns | notifications | 1fa7032197d0f8f78b35936a50a1aa77
+table_columns | profiles | a9fa1bb1c703630f272ac497bbb797ec
+table_columns | project_services | 1618571c1350481ca50a26a9e1dce689
+table_columns | projects | c50306c4faaf094614ed6f7c6d7ab984
+table_columns | push_subscriptions | e83a2acec067cb328a0522e38e6b1b78
+table_columns | reports | eb1e64fc8694b2e9040811783803eac2
+table_columns | request_comments | 496f068809ad02ca11a7a4036b33a6cf
+table_columns | request_revisions | 0838447a64441a3b079df3c3283d357d
+table_columns | requests | 028217dddcae398726eeb8720f7ec14f
+table_columns | revenue_events | 978e96a069c212bbe70374d8e0f851d2
+table_columns | security_findings | 7583ec002520fdc98b03a5601f2c6ae7
+table_columns | site_issues | 3a18fe40413f409804fd0b300b734713
+table_columns | site_monitor_checks | 9da1a7b56190e9c4baf10f6a3196eb5c
+table_columns | site_monitors | 1841906bcfc96b59e7592d78d4f89dcf
+table_columns | site_visual_checks | efa9bd43f315fb8566d602f74265a4e4
+table_columns | subscriptions | 3c37e7fa686a011f2acb90bd9f1d5eb5
+table_columns | sync_log | 96601766d9b41b95cb213882d2cfdf1e
+trigger | public.accounts.trg_accounts_updated_at | 2466db7fec230bfcc6b60d8a6ca77dd6
+trigger | public.clients.trg_clients_updated_at | 95f198b3f414e4f377e30d58a203280c
+trigger | public.internal_work_items.trg_internal_work_items_updated_at | 99d3e9b94917425dad27f1dbd8c2b0ba
+trigger | public.leads.trg_leads_updated_at | c98dd10e4b3713ad6dc7d30c21f4cf5e
+trigger | public.project_services.trg_project_services_updated_at | e5085dc2dea8bdfd561f0afe83915b62
+trigger | public.projects.trg_projects_updated_at | eadcda0c7cdd0398bc30ff179c639844
+trigger | public.requests.trg_requests_updated_at | 1a52b17619d8e55bea77e39885729f9b
+trigger | public.site_issues.trg_site_issues_updated_at | dcedc455852b5eacf0aee9861a6dd35c
+trigger | public.site_monitors.trg_site_monitors_updated_at | 65967c0009a2623936d2de2cdce5faed
+trigger | public.site_visual_checks.trg_site_visual_checks_updated_at | 71a3692cd021ff6e2681b9b250af9903
