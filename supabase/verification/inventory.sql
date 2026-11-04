@@ -40,7 +40,7 @@ select string_agg(section || ' | ' || item || ' | ' || detail, E'\n' order by se
   union all
   select 'trigger', n.nspname || '.' || c.relname || '.' || t.tgname, md5(pg_get_triggerdef(t.oid))
   from pg_trigger t join pg_class c on c.oid = t.tgrelid join pg_namespace n on n.oid = c.relnamespace
-  where not t.tgisinternal and n.nspname in ('public','auth','storage')
+  where not t.tgisinternal and n.nspname in ('public','auth')
   union all
   select 'event_trigger', evtname::text, evtevent::text || ' -> ' || evtfoid::regproc::text from pg_event_trigger
   union all
