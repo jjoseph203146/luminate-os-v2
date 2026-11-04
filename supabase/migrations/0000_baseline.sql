@@ -1,8 +1,6 @@
--- DRAFT, DO NOT APPLY YET. The bodies of current_client_id(), next_request_display_id(),
--- update_updated_at() and user_role() do not yet reproduce production's hashes (likely lost
--- whitespace in transcription). They are being replaced with byte-exact text from production.
--- Everything else was verified against the production inventory (columns, triggers, policies, counts).
---
+-- Verified 2026-11-04: columns (31 tables), functions (5), triggers (10) and policies (46) reproduce
+-- production's hashes exactly; constraint/index/grant/RLS counts match. Function bodies use CRLF line
+-- endings exactly as in production (kept by .gitattributes). Not yet applied to staging or production.
 -- 0000_baseline: structure of the LIVE production database as captured on 2026-11-04.
 --
 -- Source: read-only catalog queries run by the owner on production (Postgres 17.6).
