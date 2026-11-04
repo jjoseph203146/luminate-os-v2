@@ -2,8 +2,12 @@ name: Apply baseline to STAGING
 
 # Manual only. Applies supabase/migrations/0000_baseline.sql to the STAGING database,
 # then compares the result with production's recorded hashes. Never touches production.
-# Needs the secret STAGING_DB_URL in the "staging" environment: the Supabase *Session pooler*
-# connection string of the staging project (GitHub runners have no IPv6, so not the Direct one).
+# Needs three secrets in the "staging" environment (Settings > Environments > staging):
+#   STAGING_DB_HOST      the Supabase *Session pooler* host, e.g. aws-1-us-east-1.pooler.supabase.com
+#   STAGING_DB_USER      postgres.<project code>
+#   STAGING_DB_PASSWORD  the staging database password, entered as-is (any characters)
+# Separate values (no connection string) so symbols in the password cannot break parsing and
+# psql errors cannot echo it. GitHub runners have no IPv6, so use the pooler host, not db.<ref>.
 
 on:
   workflow_dispatch:
@@ -22,24 +26,33 @@ jobs:
     environment: staging
     timeout-minutes: 10
     env:
-      STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+      PGHOST: ${{ secrets.STAGING_DB_HOST }}
+      PGUSER: ${{ secrets.STAGING_DB_USER }}
+      PGPASSWORD: ${{ secrets.STAGING_DB_PASSWORD }}
+      PGPORT: "5432"
+      PGDATABASE: postgres
+      PGSSLMODE: require
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Require the staging secret
-        run: test -n "$STAGING_DB_URL" || { echo "STAGING_DB_URL is not set in the staging environment"; exit 1; }
+        run: |
+          for v in PGHOST PGUSER PGPASSWORD; do
+            [ -n "${!v}" ] || { echo "$v is empty: add STAGING_DB_HOST, STAGING_DB_USER and STAGING_DB_PASSWORD to the staging environment"; exit 1; }
+          done
+          case "$PGUSER" in postgres.*) ;; *) echo "STAGING_DB_USER must look like postgres.<project code>"; exit 1;; esac
 
       - name: Refuse unless the target is empty (guards against a production URL)
         run: |
-          empty=$(psql "$STAGING_DB_URL" -tAc "select to_regclass('public.clients') is null")
+          empty=$(psql -tAc "select to_regclass('public.clients') is null")
           [ "$empty" = "t" ] || { echo "public.clients already exists; refusing to run"; exit 1; }
 
       - name: Apply 0000_baseline (single transaction, all or nothing)
-        run: psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 --single-transaction -f supabase/migrations/0000_baseline.sql
+        run: psql -v ON_ERROR_STOP=1 --single-transaction -f supabase/migrations/0000_baseline.sql
 
       - name: Compare with production's recorded hashes
         run: |
-          psql "$STAGING_DB_URL" -At -f supabase/verification/inventory.sql \
+          psql -At -f supabase/verification/inventory.sql \
             | grep -E '^(table_columns|function \||trigger|policy)' | sed 's/ *$//' | sort > got.txt
           sort supabase/verification/prod_baseline_hashes_2026-11-04.txt > want.txt
           echo "expected $(wc -l < want.txt) lines, got $(wc -l < got.txt)"
