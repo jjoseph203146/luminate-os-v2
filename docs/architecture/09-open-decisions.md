@@ -10,7 +10,7 @@ These are the questions only the owner can answer. Each has a recommendation. Th
 |---|---|---|
 | D1 | Create a **staging Supabase project** (free tier is fine for staging [U]) and give the app its keys via environment settings, not chat. | Yes; name it `luminate-os-staging` |
 | D2 | **Old metrics snapshot workflow** (`dashboard-metrics-snapshot.yml`) still commits business data to git every hour. Turn it off now? Who reads that file? | Turn it off now; use the authenticated API instead |
-| D3 | Purge `dashboard-metrics-latest.json` from the old repo's git history? Is the old repo public or private? | If private: stop the workflow, skip the purge. If public: purge. |
+| ~~D3~~ | ~~Purge the metrics file from the old repo's git history?~~ **Decided 2026-11-04:** the old repo is private, so no purge. | — |
 
 ## Needed before M1 (Phase 3)
 

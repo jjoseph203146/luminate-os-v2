@@ -1,6 +1,6 @@
 # 00 — Overview
 
-**Status:** draft for owner review · **Date:** 2026-11-04 · **Code:** none yet
+**Status:** approved by the owner · **Date:** 2026-11-04 · **Code:** none yet
 
 ## In short
 
@@ -46,6 +46,8 @@ SOP references: SOP1 Service Catalog & Pricing ("Business Playbook") · SOP2 Sal
 | 2026-11-04 | **Clients see a simple request status** in the portal. The owner's comments stay private. | Matches SOP4 §3 |
 | 2026-11-04 | **Report emails** contain a short summary plus a portal link; Essential clients may get the summary only | Matches SOP4 §5 |
 | 2026-11-04 | Planning documents approved for writing (this set) | |
+| 2026-11-04 | Planning documents **approved** by the owner and added to `main` | |
+| 2026-11-04 | Old repo is **private**, so no git-history purge of the metrics snapshot file (D3) | Stopping the hourly snapshot workflow (D2) is still open |
 
 ## Ground rules for building
 
