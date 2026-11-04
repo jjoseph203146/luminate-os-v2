@@ -1,0 +1,46 @@
+name: Apply baseline to STAGING
+
+# Manual only. Applies supabase/migrations/0000_baseline.sql to the STAGING database,
+# then compares the result with production's recorded hashes. Never touches production.
+# Needs the secret STAGING_DB_URL in the "staging" environment: the Supabase *Session pooler*
+# connection string of the staging project (GitHub runners have no IPv6, so not the Direct one).
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "staging" to confirm this targets the STAGING database'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    if: ${{ inputs.confirm == 'staging' }}
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 10
+    env:
+      STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Require the staging secret
+        run: test -n "$STAGING_DB_URL" || { echo "STAGING_DB_URL is not set in the staging environment"; exit 1; }
+
+      - name: Refuse unless the target is empty (guards against a production URL)
+        run: |
+          empty=$(psql "$STAGING_DB_URL" -tAc "select to_regclass('public.clients') is null")
+          [ "$empty" = "t" ] || { echo "public.clients already exists; refusing to run"; exit 1; }
+
+      - name: Apply 0000_baseline (single transaction, all or nothing)
+        run: psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 --single-transaction -f supabase/migrations/0000_baseline.sql
+
+      - name: Compare with production's recorded hashes
+        run: |
+          psql "$STAGING_DB_URL" -At -f supabase/verification/inventory.sql \
+            | grep -E '^(table_columns|function \||trigger|policy)' | sed 's/ *$//' | sort > got.txt
+          sort supabase/verification/prod_baseline_hashes_2026-11-04.txt > want.txt
+          echo "expected $(wc -l < want.txt) lines, got $(wc -l < got.txt)"
+          diff want.txt got.txt && echo "STAGING MATCHES PRODUCTION (columns, functions, triggers, policies)"
