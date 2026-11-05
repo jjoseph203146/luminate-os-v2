@@ -7,6 +7,7 @@ import type { ClientOption } from "@/domains/work/types";
 import { AccountMenu } from "./AccountMenu";
 import { EnvBadge } from "./EnvBadge";
 import { NavLinks } from "./NavLinks";
+import { OpsLinks } from "./OpsLinks";
 import { PhoneTop } from "./PhoneTop";
 import { QuickAddFab, QuickAddHeaderButton } from "./QuickAddButtons";
 
@@ -19,13 +20,8 @@ type Props = {
   clientsError: boolean;
 };
 
-const LATER = [
-  { icon: "description" as const, label: "Documents", phase: "P3" },
-  { icon: "summarize" as const, label: "Reports", phase: "P4" },
-];
-
 /**
- * Phone: page content with a bottom bar of the five destinations and a round Quick add button.
+ * Phone: page content with a bottom bar of the four destinations and a round Quick add button.
  * md and up: 228px sidebar, 60px top bar, content up to 1120px wide.
  */
 export function AppShell({ children, env, email, signOut, clients, clientsError }: Props) {
@@ -50,14 +46,7 @@ export function AppShell({ children, env, email, signOut, clients, clientsError 
             <NavLinks variant="side" />
           </nav>
           <div className="flex-1" />
-          <div className="px-2.5 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[.08em] text-dim">Not built yet</div>
-          {LATER.map((n) => (
-            <div key={n.label} aria-disabled="true" className="flex h-[34px] items-center gap-2.5 px-2.5 text-[13px] text-dim opacity-70">
-              <Icon name={n.icon} size={18} />
-              <span className="flex-1">{n.label}</span>
-              <span className="font-mono text-[10px]">{n.phase}</span>
-            </div>
-          ))}
+          <OpsLinks />
           <AccountMenu email={email} signOut={signOut} variant="side" />
         </aside>
 
@@ -78,7 +67,7 @@ export function AppShell({ children, env, email, signOut, clients, clientsError 
 
       <nav
         aria-label="Main"
-        className="fixed inset-x-0 bottom-0 z-30 grid h-[calc(58px+max(26px,env(safe-area-inset-bottom)))] grid-cols-5 border-t border-line bg-navbg pb-[max(26px,env(safe-area-inset-bottom))] backdrop-blur md:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 grid h-[calc(58px+max(26px,env(safe-area-inset-bottom)))] grid-cols-4 border-t border-line bg-navbg pb-[max(26px,env(safe-area-inset-bottom))] backdrop-blur md:hidden"
       >
         <NavLinks variant="bottom" />
       </nav>
