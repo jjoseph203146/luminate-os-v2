@@ -73,6 +73,51 @@ export type Database = {
           },
         ]
       }
+      audit_log: {
+        Row: {
+          action: string
+          actor_id: string | null
+          actor_type: string
+          after: Json | null
+          approval_id: string | null
+          before: Json | null
+          client_id: string | null
+          entity_id: string | null
+          entity_type: string
+          id: string
+          occurred_at: string
+          request_ip: string | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          actor_type: string
+          after?: Json | null
+          approval_id?: string | null
+          before?: Json | null
+          client_id?: string | null
+          entity_id?: string | null
+          entity_type: string
+          id?: string
+          occurred_at?: string
+          request_ip?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          actor_type?: string
+          after?: Json | null
+          approval_id?: string | null
+          before?: Json | null
+          client_id?: string | null
+          entity_id?: string | null
+          entity_type?: string
+          id?: string
+          occurred_at?: string
+          request_ip?: string | null
+        }
+        Relationships: []
+      }
       audits: {
         Row: {
           audit_date: string
@@ -107,6 +152,189 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      business_calendar: {
+        Row: {
+          id: boolean
+          time_zone: string
+          updated_at: string
+          updated_by: string | null
+          working_days: number[]
+        }
+        Insert: {
+          id?: boolean
+          time_zone?: string
+          updated_at?: string
+          updated_by?: string | null
+          working_days?: number[]
+        }
+        Update: {
+          id?: boolean
+          time_zone?: string
+          updated_at?: string
+          updated_by?: string | null
+          working_days?: number[]
+        }
+        Relationships: []
+      }
+      business_holidays: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          holiday_date: string
+          label: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          holiday_date: string
+          label: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          holiday_date?: string
+          label?: string
+        }
+        Relationships: []
+      }
+      business_profile: {
+        Row: {
+          contact_email: string | null
+          display_name: string | null
+          id: boolean
+          legal_name: string
+          mailing_address: string | null
+          phone: string | null
+          updated_at: string
+          updated_by: string | null
+          website_url: string | null
+        }
+        Insert: {
+          contact_email?: string | null
+          display_name?: string | null
+          id?: boolean
+          legal_name: string
+          mailing_address?: string | null
+          phone?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          website_url?: string | null
+        }
+        Update: {
+          contact_email?: string | null
+          display_name?: string | null
+          id?: boolean
+          legal_name?: string
+          mailing_address?: string | null
+          phone?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          website_url?: string | null
+        }
+        Relationships: []
+      }
+      care_plan_templates: {
+        Row: {
+          active: boolean
+          code: string
+          created_at: string
+          id: string
+          included_services: string[]
+          monthly_price_cents: number
+          name: string
+          priority_support: boolean
+          response_target_business_days: number
+          small_updates_per_cycle: number
+          sort_order: number
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          active?: boolean
+          code: string
+          created_at?: string
+          id?: string
+          included_services?: string[]
+          monthly_price_cents: number
+          name: string
+          priority_support?: boolean
+          response_target_business_days: number
+          small_updates_per_cycle: number
+          sort_order?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          active?: boolean
+          code?: string
+          created_at?: string
+          id?: string
+          included_services?: string[]
+          monthly_price_cents?: number
+          name?: string
+          priority_support?: boolean
+          response_target_business_days?: number
+          small_updates_per_cycle?: number
+          sort_order?: number
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      catalog_items: {
+        Row: {
+          active: boolean
+          code: string
+          created_at: string
+          description: string | null
+          id: string
+          internal_benchmark_cents: number | null
+          kind: string
+          name: string
+          percent_value: number | null
+          price_cents: number | null
+          pricing_model: string
+          sort_order: number
+          updated_at: string
+          updated_by: string | null
+          watch_pricing: boolean
+        }
+        Insert: {
+          active?: boolean
+          code: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          internal_benchmark_cents?: number | null
+          kind: string
+          name: string
+          percent_value?: number | null
+          price_cents?: number | null
+          pricing_model: string
+          sort_order?: number
+          updated_at?: string
+          updated_by?: string | null
+          watch_pricing?: boolean
+        }
+        Update: {
+          active?: boolean
+          code?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          internal_benchmark_cents?: number | null
+          kind?: string
+          name?: string
+          percent_value?: number | null
+          price_cents?: number | null
+          pricing_model?: string
+          sort_order?: number
+          updated_at?: string
+          updated_by?: string | null
+          watch_pricing?: boolean
+        }
+        Relationships: []
       }
       client_documents: {
         Row: {
@@ -479,6 +707,86 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      job_runs: {
+        Row: {
+          attempts: number
+          error: string | null
+          finished_at: string | null
+          id: string
+          idempotency_key: string
+          job_key: string
+          result: Json | null
+          started_at: string
+          status: string
+          trigger_source: string
+        }
+        Insert: {
+          attempts?: number
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          idempotency_key: string
+          job_key: string
+          result?: Json | null
+          started_at?: string
+          status?: string
+          trigger_source?: string
+        }
+        Update: {
+          attempts?: number
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          idempotency_key?: string
+          job_key?: string
+          result?: Json | null
+          started_at?: string
+          status?: string
+          trigger_source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_runs_job_key_fkey"
+            columns: ["job_key"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["key"]
+          },
+        ]
+      }
+      jobs: {
+        Row: {
+          created_at: string
+          description: string | null
+          enabled: boolean
+          interval_minutes: number
+          key: string
+          last_run_at: string | null
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          interval_minutes: number
+          key: string
+          last_run_at?: string | null
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          interval_minutes?: number
+          key?: string
+          last_run_at?: string | null
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       leads: {
         Row: {
