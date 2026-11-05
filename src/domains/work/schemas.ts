@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { isValidIsoDate } from "@/platform/calendar/business-days";
-import { TASK_PRIORITIES, TASK_STATUSES } from "./types";
+import { REQUEST_PRIORITIES, REQUEST_SOURCES, TASK_PRIORITIES, TASK_STATUSES } from "./types";
 
 const blankToNull = (v: unknown) =>
   v === undefined || v === null || (typeof v === "string" && v.trim() === "") ? null : typeof v === "string" ? v.trim() : v;
@@ -13,6 +13,9 @@ export const createRequestSchema = z.object({
   clientId: z.string().trim().pipe(z.uuid("Pick a client.")),
   title,
   description: optionalText(4000),
+  priority: z.preprocess(blankToNull, z.enum(REQUEST_PRIORITIES).nullable()),
+  source: z.preprocess(blankToNull, z.enum(REQUEST_SOURCES).nullable()),
+  websiteUrl: optionalText(2048),
 });
 export type CreateRequestInput = z.infer<typeof createRequestSchema>;
 

@@ -24,6 +24,8 @@ export interface WorkRequest {
   clientId: string;
   clientName: string | null;
   status: string;
+  priority: string | null;
+  source: string | null;
   createdAt: string;
 }
 
@@ -33,9 +35,22 @@ export interface WorkOverview {
   requests: WorkRequest[];
 }
 
+export const REQUEST_PRIORITIES = ["low", "normal", "high", "urgent"] as const;
+export const REQUEST_SOURCES = ["email", "phone_call", "text_message", "in_person", "other"] as const;
+
+export const SOURCE_LABELS: Record<(typeof REQUEST_SOURCES)[number], string> = {
+  email: "Email",
+  phone_call: "Phone",
+  text_message: "Text",
+  in_person: "In person",
+  other: "Other",
+};
+
 export interface ClientOption {
   id: string;
   name: string;
+  /** The client's recorded website addresses, for the request's website field. */
+  websites: string[];
 }
 
 export interface CreatedRequest {

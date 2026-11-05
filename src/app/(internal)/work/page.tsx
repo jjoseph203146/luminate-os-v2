@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireOwner } from "@/platform/auth/actor";
 import { getWorkOverview } from "@/domains/work/service";
 import { priorityRank } from "@/domains/work/rules";
+import { SOURCE_LABELS, type REQUEST_SOURCES } from "@/domains/work/types";
 import { ageLabel, statusLabel } from "@/domains/clients/rules";
 import { StatusBadge, type Tone } from "@/ui/StatusBadge";
 import { TaskStatusControl } from "./TaskStatusControl";
@@ -74,10 +75,18 @@ export default async function WorkPage() {
                 <Link href={`/clients/${r.clientId}#care`} className="flex min-h-16 flex-col gap-1 rounded-xl border border-line bg-surface p-3">
                   <span className="flex items-center justify-between gap-2">
                     <span className="text-xs text-muted">#{r.displayId}</span>
-                    <StatusBadge tone={r.status === "waiting_on_client" ? "warn" : "info"}>{statusLabel(r.status)}</StatusBadge>
+                    <span className="flex items-center gap-1">
+                      {r.priority && r.priority !== "normal" && (
+                        <StatusBadge tone={PRIORITY_TONE[r.priority] ?? "neutral"}>{statusLabel(r.priority)}</StatusBadge>
+                      )}
+                      <StatusBadge tone={r.status === "waiting_on_client" ? "warn" : "info"}>{statusLabel(r.status)}</StatusBadge>
+                    </span>
                   </span>
                   <span className="font-medium">{r.title}</span>
-                  <span className="text-xs text-muted">{r.clientName ?? "Client"} · opened {ageLabel(r.createdAt, now)}</span>
+                  <span className="text-xs text-muted">
+                    {r.clientName ?? "Client"} · opened {ageLabel(r.createdAt, now)}
+                    {r.source ? ` · via ${SOURCE_LABELS[r.source as (typeof REQUEST_SOURCES)[number]] ?? r.source}` : ""}
+                  </span>
                 </Link>
               </li>
             ))}

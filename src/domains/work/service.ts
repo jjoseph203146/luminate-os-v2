@@ -36,6 +36,9 @@ export async function createRequest(actor: Owner, raw: unknown): Promise<Created
 
   const clientName = await repo.getClientName(db, input.clientId);
   if (clientName === null) throw new RuleError("That client could not be found.");
+  if (input.websiteUrl && !(await repo.clientHasWebsite(db, input.clientId, input.websiteUrl))) {
+    throw new RuleError("That website is not recorded for this client.");
+  }
 
   // A double-tap or retry sends the same request again: return the one already saved.
   const existing = await repo.findRecentRequest(db, input.clientId, input.title, duplicateWindowStart(new Date()));
@@ -46,7 +49,15 @@ export async function createRequest(actor: Owner, raw: unknown): Promise<Created
   for (let attempt = 0; attempt < 2 && !saved; attempt++) {
     const displayId = await repo.nextRequestDisplayId();
     try {
-      saved = await repo.insertRequest(db, { displayId, clientId: input.clientId, title: input.title, description: input.description });
+      saved = await repo.insertRequest(db, {
+        displayId,
+        clientId: input.clientId,
+        title: input.title,
+        description: input.description,
+        priority: input.priority,
+        source: input.source,
+        websiteUrl: input.websiteUrl,
+      });
     } catch (e) {
       // 23505 = that number is already taken. Ask for a new one once, then give up.
       if (!(e instanceof repo.RepoError && e.code === "23505") || attempt === 1) throw e;
@@ -59,7 +70,15 @@ export async function createRequest(actor: Owner, raw: unknown): Promise<Created
     entityType: "request",
     entityId: saved.id,
     clientId: input.clientId,
-    after: { displayId: saved.displayId, title: input.title, clientName, origin: "quick-add" },
+    after: {
+      displayId: saved.displayId,
+      title: input.title,
+      clientName,
+      priority: input.priority,
+      source: input.source,
+      websiteUrl: input.websiteUrl,
+      origin: "quick-add",
+    },
   });
   return { ...saved, duplicate: false };
 }

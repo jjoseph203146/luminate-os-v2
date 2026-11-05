@@ -4,7 +4,7 @@ import { useActionState, useEffect, useState } from "react";
 import { createRequestAction, createTaskAction } from "@/app/(internal)/work/actions";
 import { idle } from "@/ui/action-state";
 import { Sheet } from "@/ui/Sheet";
-import type { ClientOption } from "@/domains/work/types";
+import { REQUEST_SOURCES, SOURCE_LABELS, type ClientOption } from "@/domains/work/types";
 
 const field = "min-h-12 w-full rounded-lg border border-line bg-surface px-3 text-base";
 const label = "mb-1 block text-sm font-medium";
@@ -16,11 +16,13 @@ function newKey(): string {
 
 function RequestForm({ clients, onDone }: { clients: ClientOption[]; onDone: () => void }) {
   const [state, action, pending] = useActionState(createRequestAction, idle);
+  const [clientId, setClientId] = useState("");
+  const websites = clients.find((c) => c.id === clientId)?.websites ?? [];
   return (
     <form action={action} className="flex flex-col gap-3">
       <div>
         <label htmlFor="qa-client" className={label}>Client</label>
-        <select id="qa-client" name="clientId" required defaultValue="" className={field}>
+        <select id="qa-client" name="clientId" required value={clientId} onChange={(e) => setClientId(e.target.value)} className={field}>
           <option value="" disabled>Choose a client</option>
           {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
@@ -33,6 +35,33 @@ function RequestForm({ clients, onDone }: { clients: ClientOption[]; onDone: () 
         <label htmlFor="qa-desc" className={label}>Details (optional)</label>
         <textarea id="qa-desc" name="description" rows={4} maxLength={4000} className={`${field} py-2`} />
       </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label htmlFor="qa-priority" className={label}>Priority</label>
+          <select id="qa-priority" name="priority" defaultValue="normal" className={field}>
+            <option value="low">Low</option>
+            <option value="normal">Normal</option>
+            <option value="high">High</option>
+            <option value="urgent">Urgent</option>
+          </select>
+        </div>
+        <div>
+          <label htmlFor="qa-source" className={label}>Came in by</label>
+          <select id="qa-source" name="source" defaultValue="" className={field}>
+            <option value="">Not recorded</option>
+            {REQUEST_SOURCES.map((s) => <option key={s} value={s}>{SOURCE_LABELS[s]}</option>)}
+          </select>
+        </div>
+      </div>
+      {websites.length > 0 && (
+        <div>
+          <label htmlFor="qa-site" className={label}>Website</label>
+          <select id="qa-site" name="websiteUrl" defaultValue="" className={field}>
+            <option value="">Not specified</option>
+            {websites.map((w) => <option key={w} value={w}>{w}</option>)}
+          </select>
+        </div>
+      )}
       <button type="submit" disabled={pending} className={submit}>{pending ? "Saving..." : "Save request"}</button>
       {state.status === "error" && <p role="alert" className="text-sm text-bad">{state.message}</p>}
       {state.status === "ok" && (

@@ -37,14 +37,22 @@ export async function getClientName(db: Db, id: string): Promise<string | null> 
 }
 
 export async function listClientOptions(db: Db): Promise<ClientOption[]> {
-  const { data, error } = await db
-    .from("clients")
-    .select("id,business_name")
-    .is("archived_at", null)
-    .order("business_name")
-    .limit(500);
-  if (error) fail("list clients", error);
-  return data.map((c) => ({ id: c.id, name: c.business_name }));
+  const [clients, sites] = await Promise.all([
+    db.from("clients").select("id,business_name").is("archived_at", null).order("business_name").limit(500),
+    db.from("client_websites").select("client_id,url").order("created_at").limit(2000),
+  ]);
+  if (clients.error) fail("list clients", clients.error);
+  if (sites.error) fail("list websites", sites.error);
+  const byClient = new Map<string, string[]>();
+  for (const w of sites.data) byClient.set(w.client_id, [...(byClient.get(w.client_id) ?? []), w.url]);
+  return clients.data.map((c) => ({ id: c.id, name: c.business_name, websites: byClient.get(c.id) ?? [] }));
+}
+
+/** True when the address is one of the client's recorded websites. */
+export async function clientHasWebsite(db: Db, clientId: string, url: string): Promise<boolean> {
+  const { data, error } = await db.from("client_websites").select("id").eq("client_id", clientId).eq("url", url).limit(1);
+  if (error) fail("check the website", error);
+  return data.length > 0;
 }
 
 export async function findRecentRequest(db: Db, clientId: string, title: string, since: string) {
@@ -63,11 +71,27 @@ export async function findRecentRequest(db: Db, clientId: string, title: string,
 
 export async function insertRequest(
   db: Db,
-  v: { displayId: string; clientId: string; title: string; description: string | null },
+  v: {
+    displayId: string;
+    clientId: string;
+    title: string;
+    description: string | null;
+    priority: string | null;
+    source: string | null;
+    websiteUrl: string | null;
+  },
 ): Promise<{ id: string; displayId: string }> {
   const { data, error } = await db
     .from("requests")
-    .insert({ display_id: v.displayId, client_id: v.clientId, title: v.title, description: v.description })
+    .insert({
+      display_id: v.displayId,
+      client_id: v.clientId,
+      title: v.title,
+      description: v.description,
+      priority: v.priority,
+      source: v.source,
+      website_url: v.websiteUrl,
+    })
     .select("id,display_id")
     .single();
   if (error) fail("save the request", error);
@@ -161,7 +185,7 @@ export async function listOpenTasks(db: Db, today: string): Promise<WorkTask[]> 
 export async function listOpenRequests(db: Db): Promise<WorkRequest[]> {
   const { data, error } = await db
     .from("requests")
-    .select("id,display_id,client_id,title,status,created_at")
+    .select("id,display_id,client_id,title,status,priority,source,created_at")
     .neq("status", "completed")
     .order("created_at", { ascending: false })
     .limit(100);
@@ -180,6 +204,8 @@ export async function listOpenRequests(db: Db): Promise<WorkRequest[]> {
     clientId: r.client_id,
     clientName: names.get(r.client_id) ?? null,
     status: r.status,
+    priority: r.priority,
+    source: r.source,
     createdAt: r.created_at,
   }));
 }

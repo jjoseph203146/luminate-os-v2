@@ -36,6 +36,20 @@ describe("createRequestSchema", () => {
     expect(r.title).toBe("Update hours");
     expect(r.description).toBeNull();
   });
+  it("accepts priority, source and website, and blanks them when empty", () => {
+    const r = createRequestSchema.parse({ clientId: uuid, title: "Fix form", priority: "urgent", source: "text_message", websiteUrl: "a.com" });
+    expect(r.priority).toBe("urgent");
+    expect(r.source).toBe("text_message");
+    expect(r.websiteUrl).toBe("a.com");
+    const blank = createRequestSchema.parse({ clientId: uuid, title: "Fix form", priority: "", source: "", websiteUrl: "" });
+    expect(blank.priority).toBeNull();
+    expect(blank.source).toBeNull();
+    expect(blank.websiteUrl).toBeNull();
+  });
+  it("rejects unknown priority and source", () => {
+    expect(createRequestSchema.safeParse({ clientId: uuid, title: "Fix form", priority: "asap" }).success).toBe(false);
+    expect(createRequestSchema.safeParse({ clientId: uuid, title: "Fix form", source: "carrier pigeon" }).success).toBe(false);
+  });
   it("rejects a missing client, short title and long text", () => {
     expect(createRequestSchema.safeParse({ clientId: "", title: "Update" }).success).toBe(false);
     expect(createRequestSchema.safeParse({ clientId: uuid, title: "ab" }).success).toBe(false);
