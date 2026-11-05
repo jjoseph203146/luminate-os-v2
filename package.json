@@ -17,9 +17,12 @@
     "check": "npm run typecheck && npm run lint && npm run test && npm run check:policies"
   },
   "dependencies": {
+    "@supabase/ssr": "0.12.7",
+    "@supabase/supabase-js": "2.119.0",
     "next": "16.3.4",
     "react": "19.2.7",
-    "react-dom": "19.2.7"
+    "react-dom": "19.2.7",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

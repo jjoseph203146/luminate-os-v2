@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
-// Security headers (docs/architecture/07 §2). A Content-Security-Policy is
-// added in Phase 2, once the app's script and style sources are known.
+// Security headers (docs/architecture/07 §2). The Content-Security-Policy is
+// built per request, with a nonce, in src/proxy.ts (src/platform/security/csp.ts).
 const securityHeaders = [
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
