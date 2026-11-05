@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
   applicationName: "Luminate OS",
   appleWebApp: { capable: true, title: "Luminate OS", statusBarStyle: "default" },
-  icons: { icon: "/logo.png", apple: "/logo.png" },
+  icons: { icon: "/icons/icon-192.png", apple: "/icons/apple-touch-icon.png" },
 };
 
 export const viewport: Viewport = {

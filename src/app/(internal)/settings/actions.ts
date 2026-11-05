@@ -1,11 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { requireOwner } from "@/platform/auth/actor";
 import { formToObject } from "@/platform/action-errors";
 import { runAction } from "@/platform/actions";
 import * as admin from "@/domains/admin/service";
 import * as automation from "@/domains/automation/service";
+import * as notifications from "@/domains/notifications/service";
 import type { ActionState } from "@/ui/action-state";
 
 type FormAction = (prev: ActionState, formData: FormData) => Promise<ActionState>;
@@ -56,5 +58,19 @@ export async function enableUserAction(prev: ActionState, formData: FormData) {
 export async function runJobNowAction(prev: ActionState, formData: FormData) {
   return owned("/automations", "Job run finished.", async (a, raw) => {
     await automation.runNow(a, typeof raw.jobKey === "string" ? raw.jobKey : "");
+  })(prev, formData);
+}
+
+// --- Push notifications -------------------------------------------------------
+export async function registerPushDeviceAction(prev: ActionState, formData: FormData) {
+  const userAgent = (await headers()).get("user-agent");
+  return owned("/settings/notifications", "Notifications are on for this device.", (a, raw) => notifications.registerDevice(a, raw, userAgent))(prev, formData);
+}
+export async function removePushDeviceAction(prev: ActionState, formData: FormData) {
+  return owned("/settings/notifications", "Device removed.", (a, raw) => notifications.removeDevice(a, raw))(prev, formData);
+}
+export async function sendTestPushAction(prev: ActionState, formData: FormData) {
+  return owned("/settings/notifications", "Test sent. It should appear on your phone within a few seconds.", async (a) => {
+    await notifications.sendTest(a);
   })(prev, formData);
 }

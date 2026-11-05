@@ -10,6 +10,8 @@ export function buildCsp(options: { nonce: string; isDev: boolean }): string {
     "style-src": ["'self'", "'unsafe-inline'"],
     "img-src": ["'self'", "data:", "blob:"],
     "font-src": ["'self'"],
+    // The service worker (push notifications) is served from this origin.
+    "worker-src": ["'self'"],
     "connect-src": ["'self'", ...(isDev ? ["ws:", "wss:"] : [])],
     "object-src": ["'none'"],
     "base-uri": ["'self'"],

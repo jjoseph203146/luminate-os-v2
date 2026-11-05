@@ -29,8 +29,7 @@ export default async function SystemStatusPage() {
           <Pill tone={s.databaseReachable ? "green" : "red"}>{s.databaseReachable ? "Reachable" : "Not reachable"}</Pill>
         </Row>
         <Row label="Two-step verification">
-          {s.mfaRequired ? "Required" : "Not required"}
-          {s.appEnv === "production" ? " (always required in production)" : s.mfaSwitch ? " (switch on)" : " (switch off; must be on before production)"}
+          {s.mfaRequired ? "Required (switch on)" : "Off (switch off). Set AUTH_REQUIRE_MFA=true to require it."}
         </Row>
         <Row label="Scheduler heartbeat">
           {!hb

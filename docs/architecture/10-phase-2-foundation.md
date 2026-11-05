@@ -6,7 +6,7 @@
 |---|---|
 | Role mapping | `profiles.role = 'admin'` is the **owner**. `client` users have no access to this app yet. No role changes in the UI. |
 | Business calendar | Every day is a working day **except Saturday**. Time zone `America/New_York` and an **empty holiday list** are assumptions, not confirmed. Edit in Settings → Business calendar. |
-| MFA | Built, **off by default** (`AUTH_REQUIRE_MFA=false`). **Always on when `APP_ENV=production`** (SOP 8 §4.1). Authenticator-app (TOTP) MFA is available on Supabase's free tier; phone MFA is not used. Owners are encouraged to enroll two authenticators for recovery. |
+| MFA | Built, **off by default** (`AUTH_REQUIRE_MFA=false`). ~~Always on when `APP_ENV=production`~~ **Changed 2026-11-05 (owner decision): off everywhere, including production, until `AUTH_REQUIRE_MFA=true` is set.** This departs from SOP 8 §4.1 and risk R3; turn it back on before any contractor or client has access. Authenticator-app (TOTP) MFA is available on Supabase's free tier; phone MFA is not used. Owners are encouraged to enroll two authenticators for recovery. |
 | Follow-up reminders | Tasks in the app **and** Google Calendar events. Calendar sync is the integrations phase; Phase 2 stores nothing for it. |
 | Jobs trigger | Undecided. `POST/GET /api/jobs/tick` with `Authorization: Bearer $CRON_SECRET` works with Vercel Cron or any scheduler. |
 | Libraries | `@supabase/supabase-js`, `@supabase/ssr`, `zod` (pinned). No Tailwind/shadcn: pages are unstyled until the owner's design arrives. |

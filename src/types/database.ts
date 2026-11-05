@@ -73,6 +73,30 @@ export type Database = {
           },
         ]
       }
+      alert_state: {
+        Row: {
+          detail: Json | null
+          key: string
+          notified_at: string | null
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          detail?: Json | null
+          key: string
+          notified_at?: string | null
+          state: string
+          updated_at?: string
+        }
+        Update: {
+          detail?: Json | null
+          key?: string
+          notified_at?: string | null
+          state?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       audit_log: {
         Row: {
           action: string
@@ -1034,6 +1058,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      push_devices: {
+        Row: {
+          auth: string
+          created_at: string
+          endpoint: string
+          failure_count: number
+          id: string
+          label: string | null
+          last_success_at: string | null
+          owner_id: string
+          p256dh: string
+        }
+        Insert: {
+          auth: string
+          created_at?: string
+          endpoint: string
+          failure_count?: number
+          id?: string
+          label?: string | null
+          last_success_at?: string | null
+          owner_id: string
+          p256dh: string
+        }
+        Update: {
+          auth?: string
+          created_at?: string
+          endpoint?: string
+          failure_count?: number
+          id?: string
+          label?: string | null
+          last_success_at?: string | null
+          owner_id?: string
+          p256dh?: string
+        }
+        Relationships: []
       }
       push_subscriptions: {
         Row: {
