@@ -1196,6 +1196,9 @@ export type Database = {
           display_id: string
           estimated_charge: number
           id: string
+          priority: string | null
+          source: string | null
+          website_url: string | null
           revision_count: number
           status: string
           title: string
@@ -1212,6 +1215,9 @@ export type Database = {
           display_id: string
           estimated_charge?: number
           id?: string
+          priority?: string | null
+          source?: string | null
+          website_url?: string | null
           revision_count?: number
           status?: string
           title: string
@@ -1228,6 +1234,9 @@ export type Database = {
           display_id?: string
           estimated_charge?: number
           id?: string
+          priority?: string | null
+          source?: string | null
+          website_url?: string | null
           revision_count?: number
           status?: string
           title?: string

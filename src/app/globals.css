@@ -1,0 +1,228 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens, taken from the approved mobile prototype (Claude Design export 2).
+ * Screens use the names below (bg-surface, text-muted, ...), never raw colours, so the
+ * look changes in one place. Values are CSS variables so light/dark is a swap:
+ * follows the phone's setting until the owner picks Light or Dark in the menu.
+ */
+:root,
+[data-theme="light"] {
+  --bg: #f6f9fc;
+  --card: #ffffff;
+  --side: #f1f4f8;
+  --field: #ffffff;
+  --ink: #0d1b2e;
+  --dim: #56667d;
+  --line: rgba(13, 27, 46, 0.09);
+  --line2: rgba(13, 27, 46, 0.16);
+  --line3: rgba(13, 27, 46, 0.3);
+  --chip: #edf1f6;
+  --hover: rgba(13, 27, 46, 0.035);
+  --sel: #e8effa;
+  --fresh: #eef4fd;
+  --skel: rgba(13, 27, 46, 0.08);
+  --hero: #0d1b2e;
+  --primary: #0d1b2e;
+  --on-primary: #ffffff;
+  --navbg: rgba(246, 249, 252, 0.94);
+  --overlay: rgba(13, 27, 46, 0.42);
+  --blue: #2b62c6;
+  --blue-soft: #e8effb;
+  --green: #23805a;
+  --green-soft: #e4f3eb;
+  --red: #c2453a;
+  --red-soft: #fbebe8;
+  --amber: #94600f;
+  --amber-soft: #faf0dc;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b1524;
+    --card: #111d2f;
+    --side: #0a1320;
+    --field: #0e192a;
+    --ink: #e6ecf4;
+    --dim: #97a6bc;
+    --line: rgba(230, 236, 244, 0.08);
+    --line2: rgba(230, 236, 244, 0.14);
+    --line3: rgba(230, 236, 244, 0.3);
+    --chip: rgba(230, 236, 244, 0.07);
+    --hover: rgba(230, 236, 244, 0.04);
+    --sel: rgba(134, 174, 245, 0.12);
+    --fresh: rgba(134, 174, 245, 0.1);
+    --skel: rgba(230, 236, 244, 0.08);
+    --hero: #16294a;
+    --primary: #e6ecf4;
+    --on-primary: #0d1b2e;
+    --navbg: rgba(11, 21, 36, 0.94);
+    --overlay: rgba(0, 0, 0, 0.55);
+    --blue: #86aef5;
+    --blue-soft: rgba(134, 174, 245, 0.14);
+    --green: #5cc795;
+    --green-soft: rgba(92, 199, 149, 0.14);
+    --red: #f08b7f;
+    --red-soft: rgba(240, 139, 127, 0.14);
+    --amber: #e8b562;
+    --amber-soft: rgba(232, 181, 98, 0.14);
+    color-scheme: dark;
+  }
+}
+
+[data-theme="dark"] {
+  --bg: #0b1524;
+  --card: #111d2f;
+  --side: #0a1320;
+  --field: #0e192a;
+  --ink: #e6ecf4;
+  --dim: #97a6bc;
+  --line: rgba(230, 236, 244, 0.08);
+  --line2: rgba(230, 236, 244, 0.14);
+  --line3: rgba(230, 236, 244, 0.3);
+  --chip: rgba(230, 236, 244, 0.07);
+  --hover: rgba(230, 236, 244, 0.04);
+  --sel: rgba(134, 174, 245, 0.12);
+  --fresh: rgba(134, 174, 245, 0.1);
+  --skel: rgba(230, 236, 244, 0.08);
+  --hero: #16294a;
+  --primary: #e6ecf4;
+  --on-primary: #0d1b2e;
+  --navbg: rgba(11, 21, 36, 0.94);
+  --overlay: rgba(0, 0, 0, 0.55);
+  --blue: #86aef5;
+  --blue-soft: rgba(134, 174, 245, 0.14);
+  --green: #5cc795;
+  --green-soft: rgba(92, 199, 149, 0.14);
+  --red: #f08b7f;
+  --red-soft: rgba(240, 139, 127, 0.14);
+  --amber: #e8b562;
+  --amber-soft: rgba(232, 181, 98, 0.14);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-canvas: var(--bg);
+  --color-surface: var(--card);
+  --color-side: var(--side);
+  --color-field: var(--field);
+  --color-ink: var(--ink);
+  --color-muted: var(--dim);
+  --color-dim: var(--dim);
+  --color-line: var(--line);
+  --color-line2: var(--line2);
+  --color-line3: var(--line3);
+  --color-chip: var(--chip);
+  --color-hover: var(--hover);
+  --color-sel: var(--sel);
+  --color-fresh: var(--fresh);
+  --color-skel: var(--skel);
+  --color-hero: var(--hero);
+  --color-primary: var(--primary);
+  --color-on-primary: var(--on-primary);
+  --color-navbg: var(--navbg);
+  --color-overlay: var(--overlay);
+  --color-blue: var(--blue);
+  --color-blue-soft: var(--blue-soft);
+  --color-green: var(--green);
+  --color-green-soft: var(--green-soft);
+  --color-red: var(--red);
+  --color-red-soft: var(--red-soft);
+  --color-amber: var(--amber);
+  --color-amber-soft: var(--amber-soft);
+  /* Older names kept so screens not restyled yet still resolve. */
+  --color-surface-muted: var(--chip);
+  --color-neutral-bg: var(--chip);
+  --color-brand: var(--blue);
+  --color-brand-ink: #ffffff;
+  --color-ok: var(--green);
+  --color-ok-bg: var(--green-soft);
+  --color-warn: var(--amber);
+  --color-warn-bg: var(--amber-soft);
+  --color-bad: var(--red);
+  --color-bad-bg: var(--red-soft);
+  --color-info: var(--blue);
+  --color-info-bg: var(--blue-soft);
+  --font-sans: "Instrument Sans Variable", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+html {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100dvh;
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@keyframes lxUp {
+  from { transform: translateY(28px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes lxIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes lxRight {
+  from { transform: translateX(18px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes lxPulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+.lx-up { animation: lxUp 0.32s cubic-bezier(0.16, 1, 0.3, 1); }
+.lx-panel { animation: lxUp 0.32s cubic-bezier(0.16, 1, 0.3, 1); }
+@media (min-width: 1024px) {
+  .lx-panel { animation: lxRight 0.24s cubic-bezier(0.16, 1, 0.3, 1); }
+}
+.lx-pulse { animation: lxPulse 1.4s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* On wide screens an open record panel sits beside the page instead of covering it. */
+@media (min-width: 1024px) {
+  body:has([data-record-panel]) [data-shell-content] {
+    padding-right: 392px;
+  }
+}
+
+/* Plain pages that are not restyled yet (settings, automations) stay readable. */
+.plain h1 { font-size: 1.5rem; font-weight: 700; margin: 0 0 0.75rem; }
+.plain h2 { font-size: 1.15rem; font-weight: 600; margin: 1.25rem 0 0.5rem; }
+.plain p, .plain ul, .plain ol, .plain table, .plain form { margin: 0.5rem 0; }
+.plain ul { list-style: disc; padding-left: 1.25rem; }
+.plain ol { list-style: decimal; padding-left: 1.25rem; }
+.plain a { color: var(--blue); text-decoration: underline; }
+.plain input, .plain select, .plain textarea {
+  border: 1px solid var(--line2); border-radius: 0.5rem; padding: 0.5rem 0.75rem;
+  background: var(--field); color: var(--ink); min-height: 44px; max-width: 100%;
+}
+.plain button {
+  border-radius: 0.5rem; padding: 0.5rem 1rem; min-height: 44px;
+  background: var(--primary); color: var(--on-primary); font-weight: 600;
+}
+.plain button:disabled { opacity: 0.6; }
+.plain table { border-collapse: collapse; display: block; overflow-x: auto; }
+.plain th, .plain td { border: 1px solid var(--line); padding: 0.4rem 0.6rem; text-align: left; }
+.plain label { display: block; margin: 0.5rem 0 0.25rem; }

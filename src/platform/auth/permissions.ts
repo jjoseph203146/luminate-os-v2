@@ -9,6 +9,9 @@ export const PERMISSIONS = [
   "jobs.read",
   "jobs.run",
   "system.read",
+  "clients.read",
+  "work.read",
+  "work.write",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
