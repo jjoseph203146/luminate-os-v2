@@ -4,7 +4,7 @@ import type { Actor } from "@/platform/auth/types";
 import { addCalendarDays, toLocalDate } from "@/platform/calendar/business-days";
 import { createUserClient } from "@/platform/db/server";
 import { getCalendar } from "@/domains/admin/service";
-import { ATTENTION_LIMIT, buildAttention, buildRevenue, buildTodos } from "./rules";
+import { ATTENTION_LIMIT, buildAttention, buildRevenue, buildTodos, buildWaiting } from "./rules";
 import { loadTodayInputs } from "./repo";
 import type { TodayData } from "./types";
 
@@ -24,6 +24,7 @@ export async function getToday(actor: Actor): Promise<TodayData> {
     attention: attention.slice(0, ATTENTION_LIMIT),
     attentionTotal: attention.length,
     todos: buildTodos(input.tasks, today),
+    waiting: buildWaiting(input),
     revenue: buildRevenue(input.clients, input.payments, today, timeZone),
     generatedAt: now.toISOString(),
   };

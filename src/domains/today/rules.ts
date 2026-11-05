@@ -1,7 +1,7 @@
 // Pure rules for the Today screen. No database, easy to test.
 import { addCalendarDays, toLocalDate } from "@/platform/calendar/business-days";
 import { summarizeMonitor, type MonitorRow } from "@/domains/clients/rules";
-import type { AttentionItem, BusinessTodo, RevenueSummary } from "./types";
+import type { AttentionItem, BusinessTodo, RevenueSummary, WaitingItem } from "./types";
 
 export const ATTENTION_LIMIT = 25;
 
@@ -81,7 +81,7 @@ export function buildAttention(input: AttentionInput, today: string, now: Date, 
       title: "Payment failed",
       detail: `$${p.amount.toFixed(2)} did not go through`,
       clientName: nameOf(p.client_id),
-      href: `/clients/${p.client_id}#billing`,
+      href: `/clients/${p.client_id}?tab=billing`,
       asOf: p.created_at,
     });
   }
@@ -96,7 +96,7 @@ export function buildAttention(input: AttentionInput, today: string, now: Date, 
         title: "Client is past due",
         detail: "Subscription is marked past due",
         clientName: c.business_name,
-        href: `/clients/${c.id}#billing`,
+        href: `/clients/${c.id}?tab=billing`,
         asOf: null,
       });
     }
@@ -107,7 +107,7 @@ export function buildAttention(input: AttentionInput, today: string, now: Date, 
     const c = clientsById.get(m.client_id);
     if (!c || c.archived_at || c.status === "paused") continue;
     const summary = summarizeMonitor(m, c.monitoring_paused_at !== null, now);
-    const base = { clientName: c.business_name, href: `/clients/${c.id}#websites`, asOf: m.last_checked_at };
+    const base = { clientName: c.business_name, href: `/clients/${c.id}?tab=websites`, asOf: m.last_checked_at };
     if (summary.state === "down") items.push({ ...base, key: `mon-${c.id}`, kind: "site_down", severity: 1, title: "Website is down", detail: m.url });
     else if (summary.state === "slow") items.push({ ...base, key: `mon-${c.id}`, kind: "site_slow", severity: 3, title: "Website is slow", detail: m.url });
     else if (summary.state === "stale") items.push({ ...base, key: `mon-${c.id}`, kind: "site_stale", severity: 3, title: "Website check is out of date", detail: `${m.url} cannot be called healthy` });
@@ -116,7 +116,7 @@ export function buildAttention(input: AttentionInput, today: string, now: Date, 
   for (const r of input.requests) {
     if (r.status === "completed") continue;
     const age = daysBetween(r.created_at, now);
-    const base = { key: `req-${r.id}`, kind: "request" as const, clientName: nameOf(r.client_id), href: `/clients/${r.client_id}#care`, asOf: r.created_at };
+    const base = { key: `req-${r.id}`, kind: "request" as const, clientName: nameOf(r.client_id), href: `/work?view=requests&request=${r.id}`, asOf: r.created_at };
     if (r.status === "new") items.push({ ...base, severity: 2, title: `New request #${r.display_id}`, detail: r.title });
     else if (r.status === "waiting_on_client" && age >= 5) items.push({ ...base, severity: 3, title: `Waiting on client ${age} days`, detail: `#${r.display_id} ${r.title}` });
     else if ((r.status === "in_review" || r.status === "in_progress") && age >= 7) items.push({ ...base, severity: 3, title: `Open ${age} days`, detail: `#${r.display_id} ${r.title}` });
@@ -137,7 +137,7 @@ export function buildAttention(input: AttentionInput, today: string, now: Date, 
       title: overdue ? "Task overdue" : dueToday ? "Task due today" : `${t.priority === "urgent" ? "Urgent" : "High priority"} task`,
       detail: t.title,
       clientName: nameOf(t.client_id),
-      href: `/work#task-${t.id}`,
+      href: `/work?view=tasks&task=${t.id}`,
       asOf: t.updated_at,
     });
   }
@@ -151,12 +151,43 @@ export function buildAttention(input: AttentionInput, today: string, now: Date, 
       title: "Project blocked",
       detail: p.blocker_note.trim().slice(0, 140),
       clientName: nameOf(p.client_id),
-      href: `/clients/${p.client_id}#projects`,
+      href: `/clients/${p.client_id}?tab=projects`,
       asOf: p.updated_at,
     });
   }
 
   return items.sort((a, b) => a.severity - b.severity || (a.asOf ?? "").localeCompare(b.asOf ?? "") || a.key.localeCompare(b.key));
+}
+
+/** Things blocked on someone else: requests waiting on the client and tasks marked Waiting. */
+export function buildWaiting(input: AttentionInput): WaitingItem[] {
+  const names = new Map(input.clients.map((c) => [c.id, c.business_name]));
+  const items: WaitingItem[] = [];
+  for (const r of input.requests) {
+    if (r.status !== "waiting_on_client") continue;
+    items.push({
+      key: `wreq-${r.id}`,
+      kind: "request",
+      title: r.title,
+      code: r.display_id,
+      clientName: names.get(r.client_id) ?? null,
+      href: `/work?view=requests&request=${r.id}`,
+      since: r.updated_at,
+    });
+  }
+  for (const t of input.tasks) {
+    if (t.status !== "waiting") continue;
+    items.push({
+      key: `wtask-${t.id}`,
+      kind: "task",
+      title: t.title,
+      code: null,
+      clientName: t.client_id ? (names.get(t.client_id) ?? null) : null,
+      href: `/work?view=tasks&task=${t.id}`,
+      since: t.updated_at,
+    });
+  }
+  return items.sort((a, b) => a.since.localeCompare(b.since) || a.key.localeCompare(b.key));
 }
 
 /** Business to-dos are open tasks that belong to no client. */

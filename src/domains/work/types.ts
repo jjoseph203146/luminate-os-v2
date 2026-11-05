@@ -26,13 +26,28 @@ export interface WorkRequest {
   status: string;
   priority: string | null;
   source: string | null;
+  description: string | null;
+  websiteUrl: string | null;
   createdAt: string;
+}
+
+export interface WorkProject {
+  id: string;
+  name: string | null;
+  clientId: string | null;
+  clientName: string | null;
+  contractStatus: string;
+  blockerNote: string | null;
+  targetDate: string | null;
+  launchedAt: string | null;
+  framework: string | null;
 }
 
 export interface WorkOverview {
   today: string;
   tasks: WorkTask[];
   requests: WorkRequest[];
+  projects: WorkProject[];
 }
 
 export const REQUEST_PRIORITIES = ["low", "normal", "high", "urgent"] as const;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildAttention, buildRevenue, buildTodos, type AttentionInput, type ClientRow, type TaskRow } from "./rules";
+import { buildAttention, buildRevenue, buildTodos, buildWaiting, type AttentionInput, type ClientRow, type TaskRow } from "./rules";
 
 const now = new Date("2026-11-05T15:00:00Z");
 const today = "2026-11-05";
@@ -101,5 +101,20 @@ describe("buildRevenue", () => {
     expect(r.failedLast30Days).toBe(1);
     expect(r.pendingCount).toBe(1);
     expect(r.latestPaidAt).toBe("2026-11-02T12:00:00Z");
+  });
+});
+
+describe("buildWaiting", () => {
+  it("lists requests waiting on the client and tasks marked Waiting, oldest first", () => {
+    const out = buildWaiting({
+      ...empty,
+      requests: [
+        { id: "r1", client_id: "c1", display_id: "LUM-1", title: "Send logo", status: "waiting_on_client", created_at: "2026-10-01T00:00:00Z", updated_at: "2026-10-20T00:00:00Z" },
+        { id: "r2", client_id: "c1", display_id: "LUM-2", title: "Other", status: "new", created_at: "2026-10-01T00:00:00Z", updated_at: "2026-10-02T00:00:00Z" },
+      ],
+      tasks: [task({ id: "t9", status: "waiting", client_id: "c1", updated_at: "2026-10-10T00:00:00Z" }), task({ id: "t8", status: "ready" })],
+    });
+    expect(out.map((i) => i.key)).toEqual(["wtask-t9", "wreq-r1"]);
+    expect(out[1]?.clientName).toBe("Acme");
   });
 });

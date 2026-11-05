@@ -22,6 +22,18 @@ export interface AttentionItem {
   asOf: string | null;
 }
 
+export interface WaitingItem {
+  key: string;
+  kind: "request" | "task";
+  title: string;
+  /** Request number, when it is a request. */
+  code: string | null;
+  clientName: string | null;
+  href: string;
+  /** When the record last changed, shown as its age. */
+  since: string;
+}
+
 export interface BusinessTodo {
   id: string;
   title: string;
@@ -47,6 +59,7 @@ export interface TodayData {
   attention: AttentionItem[];
   attentionTotal: number;
   todos: BusinessTodo[];
+  waiting: WaitingItem[];
   revenue: RevenueSummary;
   generatedAt: string;
 }

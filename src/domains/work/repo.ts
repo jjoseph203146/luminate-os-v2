@@ -6,7 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
 import { createAdminClient } from "@/platform/db/server";
 import { isValidDisplayId } from "./rules";
-import type { ClientOption, WorkRequest, WorkTask } from "./types";
+import type { ClientOption, WorkProject, WorkRequest, WorkTask } from "./types";
 
 type Db = SupabaseClient<Database>;
 
@@ -185,7 +185,7 @@ export async function listOpenTasks(db: Db, today: string): Promise<WorkTask[]> 
 export async function listOpenRequests(db: Db): Promise<WorkRequest[]> {
   const { data, error } = await db
     .from("requests")
-    .select("id,display_id,client_id,title,status,priority,source,created_at")
+    .select("id,display_id,client_id,title,status,priority,source,description,website_url,created_at")
     .neq("status", "completed")
     .order("created_at", { ascending: false })
     .limit(100);
@@ -206,6 +206,35 @@ export async function listOpenRequests(db: Db): Promise<WorkRequest[]> {
     status: r.status,
     priority: r.priority,
     source: r.source,
+    description: r.description,
+    websiteUrl: r.website_url,
     createdAt: r.created_at,
+  }));
+}
+
+export async function listProjects(db: Db): Promise<WorkProject[]> {
+  const { data, error } = await db
+    .from("projects")
+    .select("id,name,client_id,contract_status,blocker_note,target_date,launched_at,framework")
+    .order("updated_at", { ascending: false })
+    .limit(200);
+  if (error) fail("list projects", error);
+  const clientIds = [...new Set(data.map((p) => p.client_id).filter((v): v is string => v !== null))];
+  const names = new Map<string, string>();
+  if (clientIds.length > 0) {
+    const clients = await db.from("clients").select("id,business_name").in("id", clientIds);
+    if (clients.error) fail("read clients", clients.error);
+    for (const c of clients.data) names.set(c.id, c.business_name);
+  }
+  return data.map((p) => ({
+    id: p.id,
+    name: p.name,
+    clientId: p.client_id,
+    clientName: p.client_id ? (names.get(p.client_id) ?? null) : null,
+    contractStatus: p.contract_status,
+    blockerNote: p.blocker_note,
+    targetDate: p.target_date,
+    launchedAt: p.launched_at,
+    framework: p.framework,
   }));
 }

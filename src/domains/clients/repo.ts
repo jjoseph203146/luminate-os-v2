@@ -29,7 +29,7 @@ export async function listClients(
 ): Promise<ClientListItem[]> {
   let query = db
     .from("clients")
-    .select("id,business_name,contact_name,email,phone,status,plan_name,subscription_price,archived_at,monitoring_paused_at")
+    .select("id,business_name,contact_name,email,phone,status,plan_name,subscription_price,archived_at,monitoring_paused_at,on_hold_since")
     .order("business_name", { ascending: true })
     .limit(LIST_LIMIT);
 
@@ -88,6 +88,7 @@ export async function listClients(
     monitor: summarizeMonitor((monitorByClient.get(c.id) as MonitorRow) ?? null, c.monitoring_paused_at !== null, now),
     websites: sitesByClient.get(c.id) ?? [],
     archived: c.archived_at !== null,
+    onHold: c.on_hold_since !== null,
   }));
 }
 

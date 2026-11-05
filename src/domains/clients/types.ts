@@ -26,6 +26,7 @@ export interface ClientListItem {
   monitor: MonitorSummary;
   websites: ClientWebsite[];
   archived: boolean;
+  onHold: boolean;
 }
 
 export interface ClientWebsite {

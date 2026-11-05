@@ -20,8 +20,8 @@ export async function getWorkOverview(actor: Actor): Promise<WorkOverview> {
   const { timeZone } = await getCalendar(actor);
   const today = toLocalDate(new Date(), timeZone);
   const db = await createUserClient();
-  const [tasks, requests] = await Promise.all([repo.listOpenTasks(db, today), repo.listOpenRequests(db)]);
-  return { today, tasks, requests };
+  const [tasks, requests, projects] = await Promise.all([repo.listOpenTasks(db, today), repo.listOpenRequests(db), repo.listProjects(db)]);
+  return { today, tasks, requests, projects };
 }
 
 export async function listClientOptions(actor: Actor): Promise<ClientOption[]> {
