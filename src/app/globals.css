@@ -1,0 +1,99 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens. Screens use these names (bg-surface, text-muted, ...), never raw colours,
+ * so the look can change in one place. Values are CSS variables so dark mode is a swap.
+ */
+:root {
+  --color-canvas: #f6f7f9;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f0f2f5;
+  --color-line: #e2e5ea;
+  --color-ink: #111827;
+  --color-muted: #5b6472;
+  --color-brand: #4338ca;
+  --color-brand-ink: #ffffff;
+  --color-ok: #166534;
+  --color-ok-bg: #dcfce7;
+  --color-warn: #92400e;
+  --color-warn-bg: #fef3c7;
+  --color-bad: #991b1b;
+  --color-bad-bg: #fee2e2;
+  --color-info: #1e40af;
+  --color-info-bg: #dbeafe;
+  --color-neutral-bg: #e5e7eb;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-canvas: #0d1117;
+    --color-surface: #161b22;
+    --color-surface-muted: #1c232c;
+    --color-line: #2d3540;
+    --color-ink: #e6edf3;
+    --color-muted: #9aa5b1;
+    --color-brand: #8b93ff;
+    --color-brand-ink: #0d1117;
+    --color-ok: #86efac;
+    --color-ok-bg: #12301d;
+    --color-warn: #fcd34d;
+    --color-warn-bg: #3a2c0a;
+    --color-bad: #fca5a5;
+    --color-bad-bg: #3b1414;
+    --color-info: #93c5fd;
+    --color-info-bg: #122a4a;
+    --color-neutral-bg: #2a323c;
+  }
+}
+
+@theme inline {
+  --color-canvas: var(--color-canvas);
+  --color-surface: var(--color-surface);
+  --color-surface-muted: var(--color-surface-muted);
+  --color-line: var(--color-line);
+  --color-ink: var(--color-ink);
+  --color-muted: var(--color-muted);
+  --color-brand: var(--color-brand);
+  --color-brand-ink: var(--color-brand-ink);
+  --color-ok: var(--color-ok);
+  --color-ok-bg: var(--color-ok-bg);
+  --color-warn: var(--color-warn);
+  --color-warn-bg: var(--color-warn-bg);
+  --color-bad: var(--color-bad);
+  --color-bad-bg: var(--color-bad-bg);
+  --color-info: var(--color-info);
+  --color-info-bg: var(--color-info-bg);
+  --color-neutral-bg: var(--color-neutral-bg);
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+html {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100dvh;
+}
+
+/* Plain pages that are not restyled yet (settings, automations) stay readable. */
+.plain h1 { font-size: 1.5rem; font-weight: 700; margin: 0 0 0.75rem; }
+.plain h2 { font-size: 1.15rem; font-weight: 600; margin: 1.25rem 0 0.5rem; }
+.plain p, .plain ul, .plain ol, .plain table, .plain form { margin: 0.5rem 0; }
+.plain ul { list-style: disc; padding-left: 1.25rem; }
+.plain ol { list-style: decimal; padding-left: 1.25rem; }
+.plain a { color: var(--color-brand); text-decoration: underline; }
+.plain input, .plain select, .plain textarea {
+  border: 1px solid var(--color-line); border-radius: 0.5rem; padding: 0.5rem 0.75rem;
+  background: var(--color-surface); color: var(--color-ink); min-height: 44px; max-width: 100%;
+}
+.plain button {
+  border-radius: 0.5rem; padding: 0.5rem 1rem; min-height: 44px;
+  background: var(--color-brand); color: var(--color-brand-ink); font-weight: 600;
+}
+.plain button:disabled { opacity: 0.6; }
+.plain table { border-collapse: collapse; display: block; overflow-x: auto; }
+.plain th, .plain td { border: 1px solid var(--color-line); padding: 0.4rem 0.6rem; text-align: left; }
+.plain label { display: block; margin: 0.5rem 0 0.25rem; }

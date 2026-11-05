@@ -4,10 +4,10 @@ import { toActionError } from "@/platform/action-errors";
 import type { ActionState } from "@/ui/action-state";
 
 /** Call requireOwner() BEFORE this, so a redirect is never swallowed here. */
-export async function runAction(work: () => Promise<void>, okMessage: string): Promise<ActionState> {
+export async function runAction(work: () => Promise<void>, okMessage: string | (() => string)): Promise<ActionState> {
   try {
     await work();
-    return { status: "ok", message: okMessage };
+    return { status: "ok", message: typeof okMessage === "function" ? okMessage() : okMessage };
   } catch (e) {
     unstable_rethrow(e);
     const known = toActionError(e);
