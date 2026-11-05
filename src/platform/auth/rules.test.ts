@@ -33,8 +33,8 @@ describe("mfaGate", () => {
 });
 
 describe("isMfaRequired", () => {
-  it("always requires MFA in production", () => {
-    expect(isMfaRequired("production", false)).toBe(true);
+  it("follows the switch alone, in production too (owner decision 2026-11-05)", () => {
+    expect(isMfaRequired("production", false)).toBe(false);
     expect(isMfaRequired("production", true)).toBe(true);
   });
   it("follows the switch elsewhere", () => {
@@ -64,7 +64,7 @@ describe("safeNextPath", () => {
 
 describe("isPublicPath", () => {
   it("allows sign-in related pages and the job tick", () => {
-    for (const p of ["/login", "/forgot-password", "/session-expired", "/auth/confirm", "/api/jobs/tick"]) {
+    for (const p of ["/login", "/forgot-password", "/session-expired", "/auth/confirm", "/api/jobs/tick", "/manifest.webmanifest", "/sw.js", "/logo.png", "/icons/icon-192.png", "/api/leads/create"]) {
       expect(isPublicPath(p)).toBe(true);
     }
   });

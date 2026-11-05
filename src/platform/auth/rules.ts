@@ -30,11 +30,13 @@ export function mfaGate(input: {
 }
 
 /**
- * MFA is a switch in Phase 2 but SOP 8 s4.1 requires it for owners, so in
- * production it is always on whatever the switch says.
+ * MFA is controlled only by the AUTH_REQUIRE_MFA switch, in every environment.
+ * OWNER DECISION 2026-11-05: two-step verification is switched off for now, including in
+ * production. This departs from SOP 8 s4.1 (owners must use MFA). To turn it back on, set
+ * AUTH_REQUIRE_MFA=true and redeploy; the enrol and challenge pages are still in place.
  */
-export function isMfaRequired(appEnv: "local" | "staging" | "production", switchOn: boolean): boolean {
-  return appEnv === "production" || switchOn;
+export function isMfaRequired(_appEnv: "local" | "staging" | "production", switchOn: boolean): boolean {
+  return switchOn;
 }
 
 /** Only same-site paths are allowed as a post-login destination. */
@@ -47,7 +49,15 @@ export function safeNextPath(raw: string | null | undefined): string {
   return raw;
 }
 
-const PUBLIC_EXACT = new Set(["/login", "/forgot-password", "/session-expired"]);
+const PUBLIC_EXACT = new Set([
+  "/login",
+  "/forgot-password",
+  "/session-expired",
+  // Needed by the browser before sign-in: the install files and the logo shown on the sign-in page.
+  "/manifest.webmanifest",
+  "/sw.js",
+  "/logo.png",
+]);
 
 /** Paths reachable without a session. Everything else needs one. */
 export function isPublicPath(pathname: string): boolean {
@@ -55,5 +65,9 @@ export function isPublicPath(pathname: string): boolean {
   if (pathname === "/auth/confirm") return true;
   // The job tick checks its own bearer secret.
   if (pathname === "/api/jobs/tick") return true;
+  // Install icons.
+  if (pathname.startsWith("/icons/")) return true;
+  // The website contact form posts here without a session (it validates and rate-limits itself).
+  if (pathname === "/api/leads/create") return true;
   return false;
 }

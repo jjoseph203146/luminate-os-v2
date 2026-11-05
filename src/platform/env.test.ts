@@ -26,9 +26,10 @@ describe("env", () => {
     expect(getCronSecret({ CRON_SECRET: "short" } as unknown as NodeJS.ProcessEnv)).toBeNull();
     expect(getCronSecret({ CRON_SECRET: "x".repeat(32) } as unknown as NodeJS.ProcessEnv)).toBe("x".repeat(32));
   });
-  it("defaults to local with MFA off, and forces MFA in production", () => {
+  it("defaults to local with MFA off, and follows the switch alone (production too)", () => {
     expect(getAppSettings({} as NodeJS.ProcessEnv)).toMatchObject({ appEnv: "local", mfaRequired: false });
-    expect(getAppSettings({ APP_ENV: "production" } as unknown as NodeJS.ProcessEnv).mfaRequired).toBe(true);
+    expect(getAppSettings({ APP_ENV: "production" } as unknown as NodeJS.ProcessEnv).mfaRequired).toBe(false);
+    expect(getAppSettings({ APP_ENV: "production", AUTH_REQUIRE_MFA: "true" } as unknown as NodeJS.ProcessEnv).mfaRequired).toBe(true);
     expect(getAppSettings({ APP_ENV: "staging", AUTH_REQUIRE_MFA: "true" } as unknown as NodeJS.ProcessEnv).mfaRequired).toBe(true);
   });
   it("reports presence only", () => {

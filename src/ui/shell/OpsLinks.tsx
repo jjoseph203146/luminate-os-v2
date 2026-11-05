@@ -9,6 +9,7 @@ type Item = { icon: IconName; label: string; href?: string; tag?: string };
 const ITEMS: Item[] = [
   { icon: "description", label: "Documents", tag: "Not built" },
   { icon: "summarize", label: "Reports", tag: "Not built" },
+  { icon: "monitor_heart", label: "Monitoring", href: "/monitoring" },
   { icon: "bolt", label: "Automations", href: "/automations" },
   { icon: "settings", label: "Settings", href: "/settings" },
 ];

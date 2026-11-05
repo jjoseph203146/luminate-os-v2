@@ -23,3 +23,11 @@ export class RuleError extends Error {
     this.name = "RuleError";
   }
 }
+
+/** Too many requests in a short time. The message is safe to show. */
+export class RateLimitError extends Error {
+  constructor(message = "Too many requests. Please try again later.") {
+    super(message);
+    this.name = "RateLimitError";
+  }
+}

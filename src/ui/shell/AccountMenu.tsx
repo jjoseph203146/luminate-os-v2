@@ -66,6 +66,14 @@ export function AccountMenu({
                 <Tile icon="settings" />
                 <span className="min-w-0 flex-1"><span className="block text-[15px] font-medium">Settings</span><span className="block text-[13px] text-dim">Business profile and users</span></span>
               </Link>
+              <Link href="/monitoring" onClick={() => setOpen(false)} className={rowCls}>
+                <Tile icon="monitor_heart" />
+                <span className="min-w-0 flex-1"><span className="block text-[15px] font-medium">Monitoring</span><span className="block text-[13px] text-dim">Client site checks and issues</span></span>
+              </Link>
+              <Link href="/settings/notifications" onClick={() => setOpen(false)} className={rowCls}>
+                <Tile icon="notifications" />
+                <span className="min-w-0 flex-1"><span className="block text-[15px] font-medium">Notifications</span><span className="block text-[13px] text-dim">Push alerts to this phone</span></span>
+              </Link>
               <Link href="/automations" onClick={() => setOpen(false)} className={rowCls}>
                 <Tile icon="bolt" />
                 <span className="min-w-0 flex-1"><span className="block text-[15px] font-medium">Automations</span><span className="block text-[13px] text-dim">Scheduled job status</span></span>

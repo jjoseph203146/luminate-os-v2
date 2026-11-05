@@ -21,7 +21,7 @@ export default async function MfaEnrollPage({ searchParams }: { searchParams: Pr
   return (
     <section>
       <h2>Two-step verification</h2>
-      {!mfaRequired && <p>Two-step verification is currently optional in this environment. It is required in production.</p>}
+      {!mfaRequired && <p>Two-step verification is currently switched off. You can still add an authenticator now; it is used only if the switch is turned on.</p>}
       <p>
         Authenticators on this account: <strong>{count}</strong>
         {count < 2 && " (add a second one on another device so you can still sign in if you lose a phone)"}
