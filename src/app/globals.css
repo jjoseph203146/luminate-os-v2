@@ -226,3 +226,32 @@ body {
 .plain table { border-collapse: collapse; display: block; overflow-x: auto; }
 .plain th, .plain td { border: 1px solid var(--line); padding: 0.4rem 0.6rem; text-align: left; }
 .plain label { display: block; margin: 0.5rem 0 0.25rem; }
+
+/* Sign-in and account pages: one centred card, full-width fields, 16px inputs (no iOS zoom). */
+.auth h2 { font-size: 22px; font-weight: 600; letter-spacing: -0.01em; margin: 0 0 6px; }
+.auth p { margin: 0 0 14px; font-size: 14px; line-height: 1.5; color: var(--dim); }
+.auth form { margin: 18px 0 0; }
+.auth form p:has(> label) { margin: 0 0 14px; color: var(--ink); }
+.auth label { display: block; font-size: 13px; font-weight: 600; color: var(--dim); }
+.auth input:not([type="hidden"]) {
+  display: block; width: 100%; height: 48px; margin-top: 6px; padding: 0 14px;
+  font-size: 16px; font-weight: 400; color: var(--ink); background: var(--field);
+  border: 1px solid var(--line2); border-radius: 12px;
+}
+.auth input:not([type="hidden"]):focus-visible { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); }
+.auth button {
+  display: block; width: 100%; height: 48px; margin-top: 4px; border-radius: 12px;
+  font-size: 15px; font-weight: 600; background: var(--primary); color: var(--on-primary); cursor: pointer;
+}
+.auth button:disabled { opacity: 0.6; cursor: default; }
+.auth form ~ form { margin-top: 10px; }
+.auth form ~ form button { background: var(--chip); color: var(--ink); }
+.auth a { color: var(--blue); font-weight: 500; text-decoration: none; }
+.auth a:hover { text-decoration: underline; }
+.auth p:has(> a:only-child) { margin: 18px 0 0; text-align: center; }
+.auth [role="alert"], .auth [role="status"] { margin: 14px 0 0; padding: 10px 12px; border-radius: 10px; font-size: 13.5px; }
+.auth [role="alert"] { background: var(--red-soft); color: var(--red); }
+.auth [role="status"] { background: var(--green-soft); color: var(--green); }
+.auth img { display: block; margin: 14px auto; padding: 8px; background: #fff; border-radius: 12px; }
+.auth code { display: block; margin-top: 6px; padding: 8px 10px; font-family: var(--font-mono); font-size: 12.5px; color: var(--ink); background: var(--chip); border-radius: 8px; overflow-wrap: anywhere; }
+.auth strong { color: var(--ink); }
