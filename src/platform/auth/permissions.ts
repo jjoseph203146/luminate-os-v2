@@ -12,6 +12,7 @@ export const PERMISSIONS = [
   "clients.read",
   "work.read",
   "work.write",
+  "growth.read",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];

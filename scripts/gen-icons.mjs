@@ -12,7 +12,7 @@ const NAMES = [
   "block", "schedule", "circle", "edit", "bolt", "verified", "pause_circle", "storefront", "shield",
   "monitor_heart", "web", "assignment", "folder", "person", "front_hand", "credit_card_off", "summarize",
   "more_horiz", "add_comment", "event_repeat", "handshake", "sticky_note_2", "dashboard", "key", "tune", "download",
-  "draft", "event_busy", "power_settings_new", "open_in_new",
+  "person_search", "draft", "event_busy", "power_settings_new", "open_in_new",
 ];
 const dir = "node_modules/@material-symbols/svg-400/rounded";
 const read = (file) => {
