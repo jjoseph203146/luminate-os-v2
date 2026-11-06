@@ -274,9 +274,14 @@ async function onChargeSucceeded(d: BillingDeps, charge: Record<string, unknown>
   if (paymentIntentId && (await d.stripe.paymentIntentHasInvoice(paymentIntentId))) return;
 
   const customerId = customerIdOf(charge);
-  if (!customerId) return;
-  const client = await d.repo.findClientByCustomer(customerId);
-  if (!client) return;
+  const client = customerId ? await d.repo.findClientByCustomer(customerId) : null;
+  if (!client) {
+    // No Stripe customer (a Payment Link or Checkout that did not create one), or a customer that is not one of
+    // our clients: the old app dropped these. They are recorded as an unassigned payment (client_id null), so the
+    // money is not invisible and the owner is told about it.
+    await recordUnassignedCharge(d, charge);
+    return;
+  }
 
   const chargeId = charge.id as string;
   if (await d.repo.findRevenueByInvoice(chargeId)) {
@@ -300,6 +305,21 @@ async function onChargeSucceeded(d: BillingDeps, charge: Record<string, unknown>
   await d.repo.updateClient(client.id, {
     lifetime_value: client.lifetime_value + amount,
     ...(client.on_hold_since ? { on_hold_since: null } : {}),
+  });
+}
+
+/** A successful charge with no client: one paid row with no client, once (Stripe retries and the unique id dedupe it). */
+async function recordUnassignedCharge(d: BillingDeps, charge: Record<string, unknown>): Promise<void> {
+  const chargeId = charge.id as string;
+  if (await d.repo.findRevenueByInvoice(chargeId)) return;
+  // "conflict": a concurrent delivery recorded it first. Either way there is nothing else to update.
+  await d.repo.insertRevenue({
+    stripe_invoice_id: chargeId,
+    client_id: null,
+    amount: Number(charge.amount ?? 0) / 100,
+    status: "paid",
+    event_type: "one_time",
+    paid_at: new Date(Number(charge.created ?? 0) * 1000).toISOString(),
   });
 }
 

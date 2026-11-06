@@ -16,7 +16,7 @@ export const NOTIFICATION_EVENTS: NotificationEvent[] = [
   {
     title: "Payment received",
     when: "Within about 5 minutes of a payment being recorded (the old app records Stripe payments, and this app announces them). Also for one-off payments.",
-    example: "Payment received: Acme Bakery - $49.00",
+    example: "Payment received: Acme Bakery - $49.00 (or \"Payment received: $25.00 (no client attached)\" for a payment link payment with no client)",
   },
   {
     title: "Payment failed",
