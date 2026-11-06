@@ -75,11 +75,14 @@ function expiryPayload(kind: "ssl" | "domain", bucket: number, days: number, m: 
  * - SSL and domain expiry: once per threshold, reset when renewed.
  * - Stalled checker: once when any site goes stale, silently reset when checks resume.
  * Sites whose last check is stale are not judged up or down (the data is old).
+ * Sites with `alertsMuted` (archived, on hold, monitoring stopped) are ignored completely, and do not
+ * count towards a stalled checker.
  */
 export function planAlerts(sites: SiteMonitor[], previous: AlertStateRow[], now: Date): PlannedAlert[] {
   const out: PlannedAlert[] = [];
+  const watched = sites.filter((m) => !m.alertsMuted);
 
-  for (const m of sites) {
+  for (const m of watched) {
     const stale = isStale(m.lastCheckedAt, now);
 
     // Up / down
@@ -129,7 +132,7 @@ export function planAlerts(sites: SiteMonitor[], previous: AlertStateRow[], now:
   }
 
   // The checker itself
-  const staleSites = sites.filter((m) => isStale(m.lastCheckedAt, now));
+  const staleSites = watched.filter((m) => isStale(m.lastCheckedAt, now));
   const stallKey = "monitoring:stalled";
   const stalled = stateOf(previous, stallKey) === "stalled";
   if (staleSites.length > 0 && !stalled) {

@@ -20,6 +20,7 @@ const site = (over: Partial<SiteMonitor> = {}): SiteMonitor => ({
   domainExpiresAt: inDays(200),
   lastCheckedAt: minsAgo(5),
   lastError: null,
+  alertsMuted: false,
   ...over,
 });
 
@@ -115,5 +116,29 @@ describe("planAlerts: stalled checker", () => {
     expect(planAlerts(stale, [{ key: "monitoring:stalled", state: "stalled" }], NOW).find((x) => x.key === "monitoring:stalled")).toBeUndefined();
     const back = planAlerts([site()], [{ key: "monitoring:stalled", state: "stalled" }], NOW).find((x) => x.key === "monitoring:stalled");
     expect(back).toEqual({ key: "monitoring:stalled", state: "ok", payload: null });
+  });
+});
+
+describe("planAlerts: muted sites (archived, on hold, monitoring stopped)", () => {
+  const muted = (over: Partial<SiteMonitor> = {}) => site({ id: "m1", clientName: "Gone Co", alertsMuted: true, ...over });
+
+  it("a muted site that is stale does not raise the stalled alert", () => {
+    expect(planAlerts([site(), muted({ lastCheckedAt: minsAgo(60 * 24 * 30) })], [], NOW).find((a) => a.key === "monitoring:stalled")).toBeUndefined();
+  });
+  it("a muted stale site does not keep an existing stalled alert latched", () => {
+    const plan = planAlerts([site(), muted({ lastCheckedAt: null })], [{ key: "monitoring:stalled", state: "stalled" }], NOW);
+    expect(plan.find((a) => a.key === "monitoring:stalled")).toEqual({ key: "monitoring:stalled", state: "ok", payload: null });
+  });
+  it("a real stall on a watched site still alerts once, even with muted sites present", () => {
+    const plan = planAlerts([site({ lastCheckedAt: minsAgo(90) }), muted({ lastCheckedAt: null })], [], NOW);
+    const stalled = plan.find((a) => a.key === "monitoring:stalled");
+    expect(stalled?.payload?.body).toContain("1 site has not been checked");
+  });
+  it("a muted site that is down, or near expiry, sends nothing and records nothing", () => {
+    const m = muted({ status: "down", sslExpiresAt: inDays(2), domainExpiresAt: inDays(1) });
+    expect(planAlerts([m], [{ key: "site:m1:status", state: "up" }], NOW)).toEqual([]);
+  });
+  it("a site that was down and is then muted stays quiet", () => {
+    expect(planAlerts([muted({ status: "up" })], [{ key: "site:m1:status", state: "down" }], NOW)).toEqual([]);
   });
 });

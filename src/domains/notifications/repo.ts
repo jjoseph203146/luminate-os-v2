@@ -15,6 +15,12 @@ export async function listDevices(db: Db): Promise<PushDevice[]> {
   return data.map((d) => ({ id: d.id, label: d.label, createdAt: d.created_at, lastSuccessAt: d.last_success_at, failureCount: d.failure_count }));
 }
 
+export async function listEndpoints(db: Db): Promise<string[]> {
+  const { data, error } = await db.from("push_devices").select("endpoint");
+  if (error || !data) throw new Error("Could not list devices");
+  return data.map((d) => d.endpoint);
+}
+
 export async function saveDevice(
   db: Db,
   ownerId: string,

@@ -16,10 +16,11 @@ describe("leadInputFromRaw", () => {
     expect(r.ok).toBe(false);
     expect(!r.ok && r.issues.join(" ")).toContain("email address or a phone number");
   });
-  it("rejects a bad email, a short phone and over-long text", () => {
+  it("rejects a bad email, a lone short phone and over-long text", () => {
     expect(leadInputFromRaw({ name: "A", email: "nope" }).ok).toBe(false);
     expect(leadInputFromRaw({ name: "A", phone: "123" }).ok).toBe(false);
-    expect(leadInputFromRaw({ name: "A", email: "a@b.co", notes: "x".repeat(4001) }).ok).toBe(false);
+    expect(leadInputFromRaw({ name: "A", email: "a@b.co", notes: "x".repeat(5001) }).ok).toBe(false);
+    expect(leadInputFromRaw({ name: "A", email: "a@b.co", notes: "x".repeat(5000) }).ok).toBe(true);
     expect(leadInputFromRaw({ name: "x".repeat(101), email: "a@b.co" }).ok).toBe(false);
   });
   it("strips control characters and keeps message line breaks", () => {
@@ -29,6 +30,31 @@ describe("leadInputFromRaw", () => {
   });
   it("ignores non-string junk", () => {
     expect(leadInputFromRaw({ name: { a: 1 }, email: "a@b.co" }).ok).toBe(false);
+  });
+});
+
+describe("leadInputFromRaw: what the marketing site sends", () => {
+  const website = { name: "Jane", businessName: "Acme", email: "jane@acme.com", phone: "555-0100", projectType: "New website", message: "Need a site" };
+  it("keeps the project type in the notes, like the old app did", () => {
+    const r = leadInputFromRaw(website);
+    expect(r.ok && r.value).toMatchObject({ name: "Jane", businessName: "Acme", phone: "555-0100", notes: "Project type: New website\n\nNeed a site" });
+  });
+  it("works with a project type and no message, or a message and no project type", () => {
+    const typeOnly = leadInputFromRaw({ ...website, message: "" });
+    expect(typeOnly.ok && typeOnly.value.notes).toBe("Project type: New website");
+    const r = leadInputFromRaw({ ...website, projectType: "" });
+    expect(r.ok && r.value.notes).toBe("Need a site");
+  });
+  it("keeps a short or odd phone number as typed when there is a good email", () => {
+    const r = leadInputFromRaw({ ...website, phone: "n/a" });
+    expect(r.ok && r.value.phone).toBe("n/a");
+  });
+  it("still needs email, or a phone with at least 7 digits", () => {
+    expect(leadInputFromRaw({ name: "A", phone: "n/a" }).ok).toBe(false);
+    expect(leadInputFromRaw({ name: "A", phone: "803 555 0100" }).ok).toBe(true);
+  });
+  it("caps the project type", () => {
+    expect(leadInputFromRaw({ ...website, projectType: "x".repeat(81) }).ok).toBe(false);
   });
 });
 

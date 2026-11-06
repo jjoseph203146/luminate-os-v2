@@ -30,7 +30,7 @@ export const NOTIFICATION_EVENTS: NotificationEvent[] = [
   },
   {
     title: "Site checks stalled",
-    when: "When any site has not been checked for over an hour, which means the checker itself has stopped.",
+    when: "When any monitored site has not been checked for over an hour, which means the checker itself has stopped. Archived, on-hold and monitoring-stopped clients are left out.",
     example: "Site checks look stalled: 3 sites not checked for over an hour",
   },
 ];

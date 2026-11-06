@@ -17,6 +17,8 @@ const ALIASES = {
   email: ["email", "email_address", "emailAddress", "your_email"],
   phone: ["phone", "phone_number", "phoneNumber", "tel", "mobile"],
   notes: ["notes", "message", "details", "project", "description", "comments", "inquiry"],
+  // The marketing site sends this as `projectType`. The old app saved it in the notes as "Project type: X".
+  projectType: ["projectType", "project_type", "type"],
 } as const;
 
 function pick(raw: Record<string, unknown>, keys: readonly string[]): string {
@@ -36,6 +38,10 @@ const multiLine = (s: string) => s.replace(CONTROL, "").replace(/\r\n?/g, "\n").
 export const NOT_GIVEN = "Not given";
 export const WEBSITE_SOURCE = "Website form";
 
+/** Same limit as the old app's lead route. */
+const MAX_NOTES = 5000;
+const hasUsablePhone = (phone: string) => (phone.match(/\d/g) ?? []).length >= 7;
+
 const leadSchema = z
   .object({
     name: z.string().transform(oneLine).pipe(z.string().min(1, "Please enter your name.").max(100, "Name is too long.")),
@@ -51,11 +57,20 @@ const leadSchema = z
     phone: z
       .string()
       .transform(oneLine)
-      .pipe(z.string().max(40, "Phone number is too long."))
-      .refine((v) => v === "" || (v.match(/\d/g) ?? []).length >= 7, "Please enter a valid phone number."),
-    notes: z.string().transform(multiLine).pipe(z.string().max(4000, "Message is too long.")),
+      .pipe(z.string().max(40, "Phone number is too long.")),
+    projectType: z.string().transform(oneLine).pipe(z.string().max(80, "Project type is too long.")),
+    notes: z.string().transform(multiLine).pipe(z.string().max(MAX_NOTES, "Message is too long.")),
   })
-  .refine((v) => v.email !== "" || v.phone !== "", { message: "Please give an email address or a phone number.", path: ["email"] });
+  // A way to reach the person: an email address, or a phone number with at least 7 digits.
+  // A short phone number next to a good email is kept as typed instead of losing the whole lead.
+  .refine((v) => v.email !== "" || hasUsablePhone(v.phone), {
+    message: "Please give an email address or a phone number.",
+    path: ["email"],
+  })
+  .transform(({ projectType, notes, ...rest }) => ({
+    ...rest,
+    notes: [projectType ? `Project type: ${projectType}` : "", notes].filter(Boolean).join("\n\n"),
+  }));
 
 export type WebsiteLeadInput = z.infer<typeof leadSchema>;
 
@@ -65,6 +80,7 @@ export function leadInputFromRaw(raw: Record<string, unknown>): { ok: true; valu
     businessName: pick(raw, ALIASES.businessName),
     email: pick(raw, ALIASES.email),
     phone: pick(raw, ALIASES.phone),
+    projectType: pick(raw, ALIASES.projectType),
     notes: pick(raw, ALIASES.notes),
   });
   if (result.success) return { ok: true, value: result.data };
