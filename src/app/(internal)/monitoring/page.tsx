@@ -3,13 +3,18 @@ import { requireOwner } from "@/platform/auth/actor";
 import { formatInTimeZone } from "@/platform/calendar/business-days";
 import { getMonitoringOverview } from "@/domains/monitoring/service";
 import { daysLeft, hostOf, isStale } from "@/domains/monitoring/rules";
+import { SECURITY_CHECK_TOTAL } from "@/domains/monitoring/scan-types";
 import type { SiteMonitor } from "@/domains/monitoring/types";
-import { Banner, Card, Heading } from "@/ui/forms";
+import { ActionForm } from "@/ui/ActionForm";
+import { Banner, BTN_PRIMARY, BTN_SMALL, Card, Heading } from "@/ui/forms";
 import { Icon } from "@/ui/Icon";
 import { Pill, type KitTone } from "@/ui/kit";
 import { PageTitle } from "@/ui/shell/PageTitle";
+import { scanSitesAction } from "./actions";
 
 export const metadata = { title: "Monitoring" };
+// "Scan now" runs the checks inside the request: a few seconds normally, at most about 25.
+export const maxDuration = 60;
 
 function health(m: SiteMonitor, now: Date): { label: string; tone: KitTone } {
   if (isStale(m.lastCheckedAt, now)) return { label: "No recent check", tone: "amber" };
@@ -58,9 +63,13 @@ export default async function MonitoringPage() {
   return (
     <div className="flex flex-col gap-5">
       <PageTitle title="Monitoring" sub="Client site checks and open issues" />
-      <Banner tone="amber" icon={<Icon name="info" size={18} />}>
-        The checks still run in the old app. This screen shows what they found, and the alert job turns problems into notifications. If the checks stop, you get an alert.
+      <Banner tone="blue" icon={<Icon name="info" size={18} />}>
+        Every site is checked automatically every 10 minutes, and the alert job turns problems into notifications. Use Scan now to check straight away. If the checks stop, you get an alert.
       </Banner>
+
+      <ActionForm action={scanSitesAction} submitLabel="Scan all sites now" className="flex flex-col gap-3" buttonClassName={BTN_PRIMARY} note="Checks every monitored site right now. Takes a few seconds.">
+        <span />
+      </ActionForm>
 
       <div className="flex flex-wrap gap-2">
         <Pill tone="green">{count("green")} up</Pill>
@@ -89,7 +98,7 @@ export default async function MonitoringPage() {
                   <div className="mt-0.5 truncate font-mono text-[12px] text-dim">{hostOf(m.url)}</div>
                   <div className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-2 md:grid-cols-5">
                     <Stat label="Response" value={m.responseTimeMs === null ? "n/a" : `${m.responseTimeMs} ms`} />
-                    <Stat label="Security" value={m.securityScore === null ? "n/a" : `${m.securityScore}/100`} />
+                    <Stat label="Security" value={m.securityScore === null ? "n/a" : `${m.securityScore}/${SECURITY_CHECK_TOTAL}`} />
                     <Stat label="SSL expires" value={ssl.text} bad={ssl.bad} />
                     <Stat label="Domain expires" value={dom.text} bad={dom.bad} />
                     <Stat label="Broken links" value={m.brokenLinks === null ? "n/a" : String(m.brokenLinks)} bad={(m.brokenLinks ?? 0) > 0} />
@@ -99,6 +108,9 @@ export default async function MonitoringPage() {
                     {m.lastCheckedAt ? ` (${formatInTimeZone(m.lastCheckedAt, timeZone)})` : ""}
                   </div>
                   {m.lastError && <div className="mt-1 break-words text-[12px] text-red">{m.lastError}</div>}
+                  <ActionForm action={scanSitesAction} submitLabel="Scan now" className="mt-2.5 flex flex-col gap-2" buttonClassName={BTN_SMALL}>
+                    <input type="hidden" name="clientId" value={m.clientId} />
+                  </ActionForm>
                 </div>
               );
             })}

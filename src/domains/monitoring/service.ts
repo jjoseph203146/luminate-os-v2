@@ -1,7 +1,12 @@
 // Monitoring domain: checks every client site (the `site_checks` job), shows what it found, and sends alerts about it.
+import { z } from "zod";
 import { assertCan } from "@/platform/auth/permissions";
 import type { Actor } from "@/platform/auth/types";
 import { createAdminClient, readDb } from "@/platform/db/server";
+import { writeAudit } from "@/platform/audit/audit";
+import { RateLimitError, RuleError } from "@/platform/errors";
+import { parseInput } from "@/platform/auth/schemas";
+import { createRateLimiter } from "@/platform/security/rate-limit";
 import { getCalendar } from "@/domains/admin/service";
 import { notifyOwner } from "@/domains/notifications/service";
 import { planAlerts } from "./rules";
@@ -9,7 +14,7 @@ import * as repo from "./repo";
 import { scanUrl } from "./checks";
 import { buildMonitorRow, unreachable, withScheme } from "./scan-rules";
 import type { ScanTarget, UrlScan } from "./scan-types";
-import type { MonitoringOverview } from "./types";
+import type { MonitoringOverview, ScanOutcome } from "./types";
 
 export async function getMonitoringOverview(actor: Actor): Promise<MonitoringOverview> {
   assertCan(actor, "monitoring.read");
@@ -131,18 +136,18 @@ async function scanWithCap(url: string, capMs: number): Promise<UrlScan> {
   }
 }
 
-export async function runSiteChecks(actor: Actor, now: Date = new Date(), clock: () => number = Date.now): Promise<SiteCheckRunSummary> {
-  assertCan(actor, "monitoring.scan");
-  void now;
+async function scanSites(clock: () => number, onlyClientId: string | null): Promise<{ summary: SiteCheckRunSummary; outcomes: ScanOutcome[]; found: boolean }> {
   const db = createAdminClient();
   const startedAt = clock();
-  const targets = buildScanTargets(await repo.listScanCandidates(db));
+  const all = buildScanTargets(await repo.listScanCandidates(db));
+  const targets = onlyClientId ? all.filter((t) => t.clientId === onlyClientId) : all;
   const previous = await repo.getPreviousMonitors(
     db,
     targets.map((t) => t.clientId),
   );
 
   const summary: SiteCheckRunSummary = { targets: targets.length, scanned: 0, failed: 0, skippedForTime: 0, down: 0 };
+  const outcomes: ScanOutcome[] = [];
   let next = 0;
 
   async function worker(): Promise<void> {
@@ -161,14 +166,54 @@ export async function runSiteChecks(actor: Actor, now: Date = new Date(), clock:
         await repo.saveScan(db, monitor, check);
         summary.scanned += 1;
         if (scan.status === "down") summary.down += 1;
+        outcomes.push({ clientId: target.clientId, clientName: target.clientName, status: scan.status, responseTimeMs: scan.responseTimeMs });
       } catch {
         // Client id only: the URL could carry credentials and the error text could echo it.
         console.error("site check failed for client", target.clientId);
         summary.failed += 1;
+        outcomes.push({ clientId: target.clientId, clientName: target.clientName, status: "failed", responseTimeMs: null });
       }
     }
   }
 
   await Promise.all(Array.from({ length: Math.min(SCAN_CONCURRENCY, targets.length) }, () => worker()));
-  return summary;
+  return { summary, outcomes, found: targets.length > 0 };
+}
+
+export async function runSiteChecks(actor: Actor, now: Date = new Date(), clock: () => number = Date.now): Promise<SiteCheckRunSummary> {
+  assertCan(actor, "monitoring.scan");
+  void now;
+  return (await scanSites(clock, null)).summary;
+}
+
+// --- "Scan now" (owner, from the Monitoring screen) ------------------------------------------------
+
+type Owner = Extract<Actor, { type: "owner" }>;
+const scanNowSchema = z.object({ clientId: z.string().uuid("That site was not recognised.").optional() });
+/** At most this many manual scans a minute, so a stuck button cannot hammer client sites. */
+const manualLimiter = createRateLimiter({ max: 10, windowMs: 60_000 });
+
+export interface ScanNowResult {
+  summary: SiteCheckRunSummary;
+  outcomes: ScanOutcome[];
+}
+
+/**
+ * Scans right now: every monitored site, or just one when `clientId` is given. Same scan, same tables and same
+ * rules as the scheduled job (archived and paused clients are not scanned). The alert job picks up any problem
+ * within five minutes, as for a scheduled scan.
+ */
+export async function scanNow(actor: Owner, raw: unknown, clock: () => number = Date.now): Promise<ScanNowResult> {
+  assertCan(actor, "monitoring.scan");
+  const { clientId } = parseInput(scanNowSchema, raw ?? {});
+  if (!manualLimiter.check(actor.userId, clock())) throw new RateLimitError("You just ran several scans. Wait a minute and try again.");
+  const { summary, outcomes, found } = await scanSites(clock, clientId ?? null);
+  if (clientId && !found) throw new RuleError("That site is not being monitored. It may be archived, paused, or have no website address.");
+  // A line in the audit log; a failed audit write must not hide a scan that already ran.
+  try {
+    await writeAudit(actor, { action: "site_check.run_manual", entityType: "site_check", entityId: clientId ?? "all", clientId: clientId ?? null, after: { scanned: summary.scanned, down: summary.down, failed: summary.failed } });
+  } catch {
+    /* already logged by writeAudit */
+  }
+  return { summary, outcomes };
 }

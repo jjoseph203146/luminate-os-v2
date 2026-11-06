@@ -45,3 +45,12 @@ export interface AlertStateRow {
   key: string;
   state: string;
 }
+
+/** What one site looked like in a scan, for the message shown after "Scan now". */
+export interface ScanOutcome {
+  clientId: string;
+  clientName: string;
+  /** "failed" = the scan or the save failed (the site's status is unknown). */
+  status: "up" | "slow" | "down" | "failed";
+  responseTimeMs: number | null;
+}

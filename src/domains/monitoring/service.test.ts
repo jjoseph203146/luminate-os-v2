@@ -9,10 +9,12 @@ const mocks = vi.hoisted(() => ({
   listScanCandidates: vi.fn(),
   getPreviousMonitors: vi.fn(),
   saveScan: vi.fn(),
+  writeAudit: vi.fn(),
   scanUrl: vi.fn(),
   buildMonitorRow: vi.fn(),
 }));
 
+vi.mock("@/platform/audit/audit", () => ({ writeAudit: mocks.writeAudit }));
 vi.mock("@/platform/db/server", () => ({ createAdminClient: () => ({}), createUserClient: async () => ({}) }));
 vi.mock("./repo", () => ({
   listSites: mocks.listSites,
@@ -32,8 +34,8 @@ vi.mock("./scan-rules", () => ({
 vi.mock("@/domains/notifications/service", () => ({ notifyOwner: mocks.notifyOwner }));
 vi.mock("@/domains/admin/service", () => ({ getCalendar: vi.fn() }));
 
-import { buildScanTargets, isScannable, pickScanUrl, runMonitorAlerts, runSiteChecks, SCAN_START_BUDGET_MS, SCAN_CONCURRENCY, SITE_SCAN_CAP_MS } from "./service";
-import { PermissionError } from "@/platform/errors";
+import { buildScanTargets, isScannable, pickScanUrl, runMonitorAlerts, runSiteChecks, scanNow, SCAN_START_BUDGET_MS, SCAN_CONCURRENCY, SITE_SCAN_CAP_MS } from "./service";
+import { PermissionError, RateLimitError, RuleError, ValidationError } from "@/platform/errors";
 
 const downSite = {
   id: "s1", clientId: "c1", clientName: "Acme", url: "https://acme.com", status: "down" as const, responseTimeMs: null, httpStatus: 503,
@@ -218,5 +220,64 @@ describe("runSiteChecks", () => {
     await expect(runSiteChecks({ type: "ai", name: "mcp" }, NOW)).rejects.toBeInstanceOf(PermissionError);
     await expect(runSiteChecks({ type: "client" } as never, NOW)).rejects.toBeInstanceOf(PermissionError);
     expect(mocks.listScanCandidates).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("scanNow (the Scan now buttons)", () => {
+  const owner = { type: "owner", userId: "owner-1", email: null, ip: null } as const;
+  const A = "11111111-1111-4111-8111-111111111111";
+  const B = "22222222-2222-4222-8222-222222222222";
+  const upScan = { status: "up", responseTimeMs: 412, httpStatus: 200, securityScore: 8, securityIssues: [], error: null, sslExpiresAt: null, domainExpiresAt: null, brokenLinks: 0 };
+
+  beforeEach(() => {
+    mocks.listScanCandidates.mockResolvedValue([candidate({ clientId: A, clientName: "Acme Bakery", projectUrl: "acme.com" }), candidate({ clientId: B, clientName: "Beta Co", projectUrl: "beta.com" })]);
+    mocks.getPreviousMonitors.mockResolvedValue(new Map());
+    mocks.scanUrl.mockResolvedValue(upScan);
+    mocks.buildMonitorRow.mockImplementation((target: { clientId: string }) => ({ monitor: { client_id: target.clientId }, check: { client_id: target.clientId } }));
+    mocks.saveScan.mockResolvedValue(undefined);
+    mocks.writeAudit.mockResolvedValue(undefined);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  it("scans every monitored site and reports each one", async () => {
+    const r = await scanNow(owner, {});
+    expect(r.summary).toMatchObject({ targets: 2, scanned: 2, down: 0 });
+    expect(r.outcomes.map((o) => [o.clientName, o.status, o.responseTimeMs])).toEqual([["Acme Bakery", "up", 412], ["Beta Co", "up", 412]]);
+    expect(mocks.saveScan).toHaveBeenCalledTimes(2);
+  });
+  it("scans only the one site when a clientId is given", async () => {
+    const r = await scanNow(owner, { clientId: B });
+    expect(r.summary.targets).toBe(1);
+    expect(mocks.scanUrl).toHaveBeenCalledTimes(1);
+    expect(mocks.scanUrl).toHaveBeenCalledWith("https://beta.com");
+    expect(r.outcomes[0]).toMatchObject({ clientId: B, status: "up" });
+  });
+  it("says so when the site is not monitored (archived, paused or no address), and scans nothing", async () => {
+    mocks.listScanCandidates.mockResolvedValue([candidate({ clientId: A, archivedAt: "2026-01-01T00:00:00Z" })]);
+    await expect(scanNow(owner, { clientId: A })).rejects.toBeInstanceOf(RuleError);
+    await expect(scanNow(owner, { clientId: B })).rejects.toBeInstanceOf(RuleError);
+    expect(mocks.scanUrl).not.toHaveBeenCalled();
+  });
+  it("refuses a bad id before doing anything", async () => {
+    await expect(scanNow(owner, { clientId: "not-an-id" })).rejects.toBeInstanceOf(ValidationError);
+    expect(mocks.listScanCandidates).not.toHaveBeenCalled();
+  });
+  it("writes a manual-scan line in the audit log, and still returns the result if the audit write fails", async () => {
+    await scanNow(owner, { clientId: A });
+    expect(mocks.writeAudit).toHaveBeenCalledWith(owner, expect.objectContaining({ action: "site_check.run_manual", entityId: A, clientId: A }));
+    mocks.writeAudit.mockRejectedValue(new Error("audit down"));
+    await expect(scanNow(owner, {})).resolves.toMatchObject({ summary: { scanned: 2 } });
+  });
+  it("limits manual scans to ten a minute", async () => {
+    const t = 5_000_000;
+    for (let i = 0; i < 10; i++) await scanNow({ ...owner, userId: "limited-user" }, {}, () => t);
+    await expect(scanNow({ ...owner, userId: "limited-user" }, {}, () => t)).rejects.toBeInstanceOf(RateLimitError);
+    // another owner is not affected, and the limit clears after a minute
+    await expect(scanNow({ ...owner, userId: "someone-else" }, {}, () => t)).resolves.toBeDefined();
+    await expect(scanNow({ ...owner, userId: "limited-user" }, {}, () => t + 61_000)).resolves.toBeDefined();
+  });
+  it("is not allowed for the ai actor or a client", async () => {
+    await expect(scanNow({ type: "ai", name: "mcp" } as never, {})).rejects.toBeInstanceOf(PermissionError);
+    await expect(scanNow({ type: "client" } as never, {})).rejects.toBeInstanceOf(PermissionError);
   });
 });
