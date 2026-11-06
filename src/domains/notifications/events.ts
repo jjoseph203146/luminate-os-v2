@@ -1,5 +1,5 @@
 // The notifications the owner can receive, in plain words. Shown on Settings > Notifications.
-// Keep this in step with the code that sends them (growth/rules.ts and monitoring/rules.ts).
+// Keep this in step with the code that sends them (growth/intake.ts, monitoring/rules.ts and alerts/rules.ts).
 
 export interface NotificationEvent {
   title: string;
@@ -12,6 +12,26 @@ export const NOTIFICATION_EVENTS: NotificationEvent[] = [
     title: "New website lead",
     when: "Within seconds of someone sending the contact form on the Luminate website.",
     example: "New lead: Jane Smith - Acme Bakery - jane@acme.com",
+  },
+  {
+    title: "Payment received",
+    when: "Within about 5 minutes of a payment being recorded (the old app records Stripe payments, and this app announces them). Also for one-off payments.",
+    example: "Payment received: Acme Bakery - $49.00",
+  },
+  {
+    title: "Payment failed",
+    when: "Within about 5 minutes of a failed payment being recorded. Not sent for clients that are on hold or archived. If the payment is later paid, you also get Payment received.",
+    example: "Payment failed: Acme Bakery - $49.00 did not go through. Follow up.",
+  },
+  {
+    title: "New client request",
+    when: "When a client sends a request from the client portal. Requests you add yourself with Quick Add do not notify you.",
+    example: "New request: Acme Bakery - LUM-1052 Update opening hours",
+  },
+  {
+    title: "New client comment",
+    when: "When a client comments on a request in the client portal. The comment text is not included.",
+    example: "New comment: Acme Bakery - On LUM-1052 Update opening hours",
   },
   {
     title: "Site down",
