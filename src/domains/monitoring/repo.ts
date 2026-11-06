@@ -15,10 +15,17 @@ export async function listSites(db: Db): Promise<SiteMonitor[]> {
   if (error || !monitors) throw new Error("Could not read site checks");
   const ids = [...new Set(monitors.map((m) => m.client_id))];
   const names = new Map<string, string>();
+  const muted = new Set<string>();
   if (ids.length > 0) {
-    const { data: clients, error: e2 } = await db.from("clients").select("id,business_name").in("id", ids);
+    const { data: clients, error: e2 } = await db
+      .from("clients")
+      .select("id,business_name,archived_at,on_hold_since,monitoring_paused_at")
+      .in("id", ids);
     if (e2 || !clients) throw new Error("Could not read clients");
-    for (const c of clients) names.set(c.id, c.business_name);
+    for (const c of clients) {
+      names.set(c.id, c.business_name);
+      if (c.archived_at || c.on_hold_since || c.monitoring_paused_at) muted.add(c.id);
+    }
   }
   return monitors.map((m) => ({
     id: m.id,
@@ -34,6 +41,7 @@ export async function listSites(db: Db): Promise<SiteMonitor[]> {
     domainExpiresAt: m.domain_expires_at,
     lastCheckedAt: m.last_checked_at,
     lastError: m.last_error,
+    alertsMuted: muted.has(m.client_id),
   }));
 }
 

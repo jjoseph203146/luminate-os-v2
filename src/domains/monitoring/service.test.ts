@@ -17,7 +17,7 @@ import { runMonitorAlerts } from "./service";
 
 const downSite = {
   id: "s1", clientId: "c1", clientName: "Acme", url: "https://acme.com", status: "down" as const, responseTimeMs: null, httpStatus: 503,
-  securityScore: null, brokenLinks: null, sslExpiresAt: null, domainExpiresAt: null, lastCheckedAt: new Date(NOW.getTime() - 60_000).toISOString(), lastError: null,
+  securityScore: null, brokenLinks: null, sslExpiresAt: null, domainExpiresAt: null, lastCheckedAt: new Date(NOW.getTime() - 60_000).toISOString(), lastError: null, alertsMuted: false,
 };
 const system = { type: "system", name: "monitor_alerts" } as const;
 

@@ -3,7 +3,7 @@ import { BTN_PRIMARY, BTN_SMALL, Card, Heading } from "@/ui/forms";
 import { requireOwner } from "@/platform/auth/actor";
 import { formatInTimeZone } from "@/platform/calendar/business-days";
 import { getCalendar } from "@/domains/admin/service";
-import { listDevices, pushStatus } from "@/domains/notifications/service";
+import { listDevices, pushStatus, registeredFingerprints } from "@/domains/notifications/service";
 import { NOTIFICATION_EVENTS } from "@/domains/notifications/events";
 import { removePushDeviceAction, sendTestPushAction } from "../actions";
 import { PushControls } from "./PushControls";
@@ -12,14 +12,14 @@ export const metadata = { title: "Notifications" };
 
 export default async function NotificationsPage() {
   const actor = await requireOwner();
-  const [devices, { timeZone }] = await Promise.all([listDevices(actor), getCalendar(actor)]);
+  const [devices, { timeZone }, registered] = await Promise.all([listDevices(actor), getCalendar(actor), registeredFingerprints(actor)]);
   const status = pushStatus(actor);
   return (
     <div className="flex flex-col gap-5">
       <section>
         <Heading>This device</Heading>
         <Card className="px-4 py-4">
-          <PushControls publicKey={status.publicKey} />
+          <PushControls publicKey={status.publicKey} registered={registered} />
         </Card>
       </section>
 

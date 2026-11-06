@@ -7,15 +7,17 @@ const mocks = vi.hoisted(() => ({
   removeDevices: vi.fn(),
   sendPush: vi.fn(),
   getPushConfig: vi.fn(),
+  listEndpoints: vi.fn(),
 }));
 
 vi.mock("@/platform/db/server", () => ({ createAdminClient: () => ({}), createUserClient: async () => ({}) }));
 vi.mock("@/platform/audit/audit", () => ({ writeAudit: vi.fn() }));
-vi.mock("./repo", () => ({ listTargets: mocks.listTargets, recordSuccess: mocks.recordSuccess, recordFailure: mocks.recordFailure, removeDevices: mocks.removeDevices }));
+vi.mock("./repo", () => ({ listTargets: mocks.listTargets, recordSuccess: mocks.recordSuccess, recordFailure: mocks.recordFailure, removeDevices: mocks.removeDevices, listEndpoints: mocks.listEndpoints }));
 vi.mock("@/platform/push/send", () => ({ sendPush: mocks.sendPush }));
 vi.mock("@/platform/env", () => ({ getPushConfig: mocks.getPushConfig }));
 
-import { notifyOwner, sendTest } from "./service";
+import { notifyOwner, registeredFingerprints, sendTest } from "./service";
+import { endpointFingerprint } from "./rules";
 import { PermissionError } from "@/platform/errors";
 
 const system = { type: "system", name: "t" } as const;
@@ -66,5 +68,17 @@ describe("sendTest", () => {
     mocks.getPushConfig.mockReturnValue({ publicKey: "p", privateKey: "k", subject: "mailto:a@b.co" });
     mocks.listTargets.mockResolvedValue([]);
     await expect(sendTest(owner)).rejects.toThrow(/No device/);
+  });
+});
+
+describe("registeredFingerprints", () => {
+  it("returns fingerprints, never the endpoint addresses", async () => {
+    mocks.listEndpoints.mockResolvedValue(["https://push.example/one", "https://push.example/two"]);
+    const out = await registeredFingerprints(owner);
+    expect(out).toEqual([await endpointFingerprint("https://push.example/one"), await endpointFingerprint("https://push.example/two")]);
+    expect(out.join(" ")).not.toContain("push.example");
+  });
+  it("is not allowed for actors without the permission", async () => {
+    await expect(registeredFingerprints({ type: "client" } as never)).rejects.toBeInstanceOf(PermissionError);
   });
 });

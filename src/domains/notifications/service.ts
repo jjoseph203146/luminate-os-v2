@@ -8,7 +8,7 @@ import { getPushConfig } from "@/platform/env";
 import { RuleError } from "@/platform/errors";
 import { sendPush, type PushPayload } from "@/platform/push/send";
 import { deviceIdSchema, deviceSchema } from "./schemas";
-import { deviceLabel } from "./rules";
+import { deviceLabel, endpointFingerprint } from "./rules";
 import * as repo from "./repo";
 import type { NotifyResult, PushDevice } from "./types";
 
@@ -24,6 +24,12 @@ export function pushStatus(actor: Actor): { configured: boolean; publicKey: stri
 export async function listDevices(actor: Actor): Promise<PushDevice[]> {
   assertCan(actor, "notifications.manage");
   return repo.listDevices(await createUserClient());
+}
+
+/** Fingerprints of the endpoints registered for this owner, so a device can check itself (see PushControls). */
+export async function registeredFingerprints(actor: Actor): Promise<string[]> {
+  assertCan(actor, "notifications.manage");
+  return Promise.all((await repo.listEndpoints(await createUserClient())).map(endpointFingerprint));
 }
 
 export async function registerDevice(actor: Owner, raw: Record<string, unknown>, userAgent: string | null): Promise<void> {

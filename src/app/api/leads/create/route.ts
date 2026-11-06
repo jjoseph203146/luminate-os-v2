@@ -86,6 +86,9 @@ export async function POST(request: Request): Promise<Response> {
     }
     return respond({ ok: true, success: true }, 200, origin);
   } catch (e) {
+    // Only the fixed validation messages are logged, never what the visitor typed, so a form that
+    // starts rejecting real leads shows up in the logs.
+    if (e instanceof ValidationError) console.warn("lead intake rejected:", e.issues.join(" | "));
     if (e instanceof ValidationError) return respond({ ok: false, success: false, error: e.issues[0] ?? "Please check the form and try again.", issues: e.issues }, 400, origin);
     if (e instanceof RateLimitError) return respond({ ok: false, success: false, error: e.message }, 429, origin);
     console.error("lead intake failed", e);

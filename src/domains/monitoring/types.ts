@@ -15,6 +15,12 @@ export interface SiteMonitor {
   domainExpiresAt: string | null;
   lastCheckedAt: string | null;
   lastError: string | null;
+  /**
+   * True when the client is archived, on hold, or has monitoring stopped. The old checker skips
+   * archived and paused clients (their last check goes stale for good) and on-hold clients get no
+   * alerts, so none of these may raise an alert here either.
+   */
+  alertsMuted: boolean;
 }
 
 export interface SiteIssue {

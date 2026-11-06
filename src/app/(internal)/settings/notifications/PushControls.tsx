@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { idle } from "@/ui/action-state";
+import { endpointFingerprint, sameKey } from "@/domains/notifications/rules";
 import { BTN_PRIMARY, BTN_SMALL } from "@/ui/forms";
 import { registerPushDeviceAction } from "../actions";
 
@@ -19,7 +20,7 @@ const isIos = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.p
 const isInstalled = () => window.matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
 
 /** Turns notifications on or off for the device that is showing this page. */
-export function PushControls({ publicKey }: { publicKey: string | null }) {
+export function PushControls({ publicKey, registered }: { publicKey: string | null; registered: string[] }) {
   const [mode, setMode] = useState<Mode>("checking");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -34,7 +35,10 @@ export function PushControls({ publicKey }: { publicKey: string | null }) {
       else {
         const reg = await navigator.serviceWorker.getRegistration("/sw.js");
         const sub = reg ? await reg.pushManager.getSubscription() : null;
-        next = sub && Notification.permission === "granted" ? "on" : "off";
+        // "On" only when this browser's subscription was made with THIS app's key and is registered here.
+        // A subscription left by another app on the same address (the old Luminate OS) looks on, but never delivers.
+        const usable = sub !== null && sameKey(sub.options.applicationServerKey, keyToBytes(publicKey)) && registered.includes(await endpointFingerprint(sub.endpoint));
+        next = usable && Notification.permission === "granted" ? "on" : "off";
       }
       if (!cancelled) setMode(next);
     })().catch(() => {
@@ -43,7 +47,7 @@ export function PushControls({ publicKey }: { publicKey: string | null }) {
     return () => {
       cancelled = true;
     };
-  }, [publicKey]);
+  }, [publicKey, registered]);
 
   async function turnOn() {
     if (!publicKey) return;
@@ -57,7 +61,14 @@ export function PushControls({ publicKey }: { publicKey: string | null }) {
         setMode(permission === "denied" ? "denied" : "off");
         return;
       }
-      const sub = (await reg.pushManager.getSubscription()) ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyToBytes(publicKey) }));
+      const key = keyToBytes(publicKey);
+      let existing = await reg.pushManager.getSubscription();
+      // A subscription made with a different key (for example by the old app) cannot receive our messages: replace it.
+      if (existing && !sameKey(existing.options.applicationServerKey, key)) {
+        await existing.unsubscribe();
+        existing = null;
+      }
+      const sub = existing ?? (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }));
       const json = sub.toJSON();
       const fd = new FormData();
       fd.set("endpoint", json.endpoint ?? "");
