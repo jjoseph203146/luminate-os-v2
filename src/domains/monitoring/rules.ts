@@ -171,3 +171,30 @@ export function scanMessage(outcomes: ScanOutcome[], skippedForTime = 0): string
   const rest = skippedForTime > 0 ? ` ${skippedForTime} will be scanned on the next run.` : "";
   return `Scanned ${n} site${n === 1 ? "" : "s"}: ${parts.join(", ")}.${rest}`;
 }
+
+export type SiteHealthKind = "up" | "down" | "attention" | "unknown" | "off";
+
+export interface SiteHealth {
+  label: string;
+  tone: "red" | "amber" | "green" | "gray";
+  kind: SiteHealthKind;
+}
+
+/** Archived clients leave the Monitoring list, as they leave every other list. Paused ones stay, marked as not monitored. */
+export function isListed(m: Pick<SiteMonitor, "muteReason">): boolean {
+  return m.muteReason !== "archived";
+}
+
+/**
+ * What the Monitoring screen says about a site. A site whose monitoring was stopped is "Monitoring off", not a
+ * problem: it is not scanned, so its last check is old on purpose. Everything else is judged on its last check.
+ */
+export function siteHealth(m: Pick<SiteMonitor, "status" | "lastCheckedAt" | "muteReason">, now: Date): SiteHealth {
+  if (m.muteReason === "archived") return { label: "Archived", tone: "gray", kind: "off" };
+  if (m.muteReason === "paused") return { label: "Monitoring off", tone: "gray", kind: "off" };
+  if (isStale(m.lastCheckedAt, now)) return { label: "No recent check", tone: "amber", kind: "attention" };
+  if (m.status === "down") return { label: "Down", tone: "red", kind: "down" };
+  if (m.status === "slow") return { label: "Slow", tone: "amber", kind: "attention" };
+  if (m.status === "up") return { label: "Up", tone: "green", kind: "up" };
+  return { label: "Unknown", tone: "gray", kind: "unknown" };
+}

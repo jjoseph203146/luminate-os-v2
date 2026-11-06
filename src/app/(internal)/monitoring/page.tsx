@@ -2,27 +2,18 @@ import Link from "next/link";
 import { requireOwner } from "@/platform/auth/actor";
 import { formatInTimeZone } from "@/platform/calendar/business-days";
 import { getMonitoringOverview } from "@/domains/monitoring/service";
-import { daysLeft, hostOf, isStale } from "@/domains/monitoring/rules";
+import { daysLeft, hostOf, isListed, siteHealth } from "@/domains/monitoring/rules";
 import { SECURITY_CHECK_TOTAL } from "@/domains/monitoring/scan-types";
-import type { SiteMonitor } from "@/domains/monitoring/types";
 import { ActionForm } from "@/ui/ActionForm";
 import { Banner, BTN_PRIMARY, BTN_SMALL, Card, Heading } from "@/ui/forms";
 import { Icon } from "@/ui/Icon";
-import { Pill, type KitTone } from "@/ui/kit";
+import { Pill } from "@/ui/kit";
 import { PageTitle } from "@/ui/shell/PageTitle";
 import { scanSitesAction } from "./actions";
 
 export const metadata = { title: "Monitoring" };
 // "Scan now" runs the checks inside the request: a few seconds normally, at most about 25.
 export const maxDuration = 60;
-
-function health(m: SiteMonitor, now: Date): { label: string; tone: KitTone } {
-  if (isStale(m.lastCheckedAt, now)) return { label: "No recent check", tone: "amber" };
-  if (m.status === "down") return { label: "Down", tone: "red" };
-  if (m.status === "slow") return { label: "Slow", tone: "amber" };
-  if (m.status === "up") return { label: "Up", tone: "green" };
-  return { label: "Unknown", tone: "gray" };
-}
 
 function ago(iso: string | null, now: Date): string {
   if (!iso) return "never";
@@ -54,10 +45,12 @@ export default async function MonitoringPage() {
   const actor = await requireOwner();
   const { sites, issues, timeZone, asOf } = await getMonitoringOverview(actor);
   const now = new Date(asOf);
+  const ORDER = ["down", "attention", "unknown", "up", "off"];
   const rows = sites
-    .map((m) => ({ m, h: health(m, now) }))
-    .sort((a, b) => ["red", "amber", "gray", "green"].indexOf(a.h.tone) - ["red", "amber", "gray", "green"].indexOf(b.h.tone) || a.m.clientName.localeCompare(b.m.clientName));
-  const count = (tone: KitTone) => rows.filter((r) => r.h.tone === tone).length;
+    .filter(isListed)
+    .map((m) => ({ m, h: siteHealth(m, now) }))
+    .sort((a, b) => ORDER.indexOf(a.h.kind) - ORDER.indexOf(b.h.kind) || a.m.clientName.localeCompare(b.m.clientName));
+  const count = (kind: string) => rows.filter((r) => r.h.kind === kind).length;
   const names = new Map(sites.map((s) => [s.clientId, s.clientName]));
 
   return (
@@ -72,10 +65,11 @@ export default async function MonitoringPage() {
       </ActionForm>
 
       <div className="flex flex-wrap gap-2">
-        <Pill tone="green">{count("green")} up</Pill>
-        <Pill tone="red">{count("red")} down</Pill>
-        <Pill tone="amber">{count("amber")} need attention</Pill>
-        <Pill tone="gray">{count("gray")} unknown</Pill>
+        <Pill tone="green">{count("up")} up</Pill>
+        <Pill tone="red">{count("down")} down</Pill>
+        <Pill tone="amber">{count("attention")} need attention</Pill>
+        <Pill tone="gray">{count("unknown")} unknown</Pill>
+        {count("off") > 0 && <Pill tone="gray">{count("off")} monitoring off</Pill>}
       </div>
 
       <section>
@@ -108,9 +102,13 @@ export default async function MonitoringPage() {
                     {m.lastCheckedAt ? ` (${formatInTimeZone(m.lastCheckedAt, timeZone)})` : ""}
                   </div>
                   {m.lastError && <div className="mt-1 break-words text-[12px] text-red">{m.lastError}</div>}
-                  <ActionForm action={scanSitesAction} submitLabel="Scan now" className="mt-2.5 flex flex-col gap-2" buttonClassName={BTN_SMALL}>
-                    <input type="hidden" name="clientId" value={m.clientId} />
-                  </ActionForm>
+                  {m.muteReason === "paused" ? (
+                    <div className="mt-2 text-[12px] text-dim">Monitoring is switched off for this client, so it is not scanned.</div>
+                  ) : (
+                    <ActionForm action={scanSitesAction} submitLabel="Scan now" className="mt-2.5 flex flex-col gap-2" buttonClassName={BTN_SMALL}>
+                      <input type="hidden" name="clientId" value={m.clientId} />
+                    </ActionForm>
+                  )}
                 </div>
               );
             })}

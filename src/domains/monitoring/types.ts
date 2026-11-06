@@ -21,6 +21,8 @@ export interface SiteMonitor {
    * alerts, so none of these may raise an alert here either.
    */
   alertsMuted: boolean;
+  /** Why it is muted: archived (leaves every list), paused (not scanned) or on hold (still scanned, no alerts). */
+  muteReason?: "archived" | "paused" | "on_hold";
 }
 
 export interface SiteIssue {
