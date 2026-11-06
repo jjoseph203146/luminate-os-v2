@@ -20,7 +20,7 @@ tested), `repo.ts` (database), `src/platform/stripe/` (client and the read-only 
 | `customer.subscription.deleted` | Client `paused`, but only when this was their last live subscription. |
 | `subscription_schedule.created`, `.updated` | For a subscription with a future start date: the price (fetched from Stripe if needed) and the start date. A finished or released schedule changes nothing. |
 
-Every other event type is answered 200 and ignored. The live endpoint currently sends 23 types (14 above plus
+Every other event type is answered 200 and ignored. The live endpoint currently sends 23 types (the 12 above plus these 11:
 `invoice.created`, `.deleted`, `.sent`, `.updated`, `.voided`, `.upcoming`, `.payment_action_required`,
 `.payment_attempt_required`, `customer.source.updated`, `customer.card.updated`, `customer.bank_account.updated`,
 which the old app ignored too).
@@ -47,14 +47,15 @@ Owners can read the ledger (RLS); only the server writes it.
   `revenue_events` within 5 minutes. (The old "Initial build invoice paid" and "taken off hold" wordings are gone.)
 - **No `sync_log` rows.** The ledger replaces them. The old app's System status will show its webhook as idle
   after the cutover; that is expected.
-- **Test-mode events in production** are decided by `APP_ENV=production` (the old app used `VERCEL_ENV`).
-- **Body limit 512 KB**, `405` for anything but POST, and `503` when Stripe is not configured.
+- **Test-mode events in production** are ignored when `APP_ENV=production` **or** `VERCEL_ENV=production` (the old app used `VERCEL_ENV` only). Vercel always sets `VERCEL_ENV`, so a missing `APP_ENV` can never let Stripe test data into the real database.
+- **Retries repair the client.** If an attempt saved a payment and then failed before updating the client, Stripe's retry of the same event re-applies the client changes (status back to active, hold lifted, billing date). It does not add the amount to the lifetime value a second time, because the failed attempt may already have added it; in that rare case the lifetime value can be one payment short.
+- **Body limit 2 MB** (large invoices make large events), `405` for anything but POST, and `503` when Stripe is not configured.
 
 ## Settings (Vercel, v2 project)
 
 | Variable | Value |
 |---|---|
-| `STRIPE_SECRET_KEY` | Recommended: a **restricted key** with **read** access only to: Customers, Invoices, Subscriptions (includes subscription items), Prices, and Invoice payments. The webhook never creates or changes anything in Stripe. A full secret key also works. |
+| `STRIPE_SECRET_KEY` | Recommended: a **restricted key** with **read** access only to: Customers, Invoices, Subscriptions (includes subscription items), Prices, and Invoice payments. The webhook never creates or changes anything in Stripe. A full secret key also works. The "Invoice payments" permission name is unverified: if Stripe's restricted-key screen has no such entry, check `charge.succeeded` in the test plan, which is the call most likely to be refused. |
 | `STRIPE_WEBHOOK_SECRET` | The **existing live endpoint's signing secret** (Stripe → Developers → Webhooks → the endpoint → Reveal signing secret). It does **not** change when the endpoint's URL is edited. |
 | `STRIPE_WEBHOOK_SECRET_TEST` | Optional: the signing secret of a test-mode endpoint. Both secrets are tried, live first. |
 | `APP_ENV` | `production` on the production deployment, so test-mode events are ignored there. |
@@ -66,8 +67,10 @@ answers 500 and Stripe keeps retrying).
 
 1. Use a non-production deployment connected to the **staging** database, or run locally with the staging
    variables and `stripe listen --forward-to localhost:3000/api/webhooks/stripe` (put the `whsec_...` it prints in
-   `STRIPE_WEBHOOK_SECRET_TEST`).
-2. `stripe trigger customer.created`, `invoice.paid`, `invoice.payment_failed`, `customer.subscription.deleted`.
+   `STRIPE_WEBHOOK_SECRET_TEST`). `STRIPE_SECRET_KEY` there must be a **test-mode** key (`sk_test_...` or a
+   restricted `rk_test_...`): with a live key every Stripe lookup fails on test objects and each event answers 500.
+2. `stripe trigger customer.created`, `invoice.paid`, `invoice.payment_failed`, `charge.succeeded`,
+   `customer.subscription.deleted` (use the same restricted-key permissions you plan for production).
 3. Check: a client appears (onboarding), a paid row, `past_due` after the failure, `active` again after a payment,
    `paused` after the last subscription is deleted, and one `integration_events` row per event (`processed`).
 4. Re-send an event from the Stripe dashboard: the answer is `200 {duplicate: true}` and nothing changes.

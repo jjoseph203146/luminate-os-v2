@@ -135,6 +135,21 @@ describe("invoice.paid / invoice.payment_succeeded", () => {
     await run("invoice.paid", invoice());
     expect(repo.clients[0]!.lifetime_value).toBe(100);
   });
+  it("a retry of an event whose earlier attempt saved the payment but failed before the client update repairs the client, without counting the money twice", async () => {
+    // The earlier attempt: payment row saved, then the client update failed (so the client is still past_due and on hold).
+    repo.revenue.push({ id: "rev-p", stripe_invoice_id: "in_1", client_id: "c1", amount: 49, status: "paid", event_type: "subscription", paid_at: "2026-11-05T10:00:00.000Z" });
+    repo.clients[0]!.status = "past_due";
+    repo.clients[0]!.on_hold_since = "2026-10-01T00:00:00Z";
+    await handleStripeEvent(stripeActor, event("invoice.paid", invoice()), { ...deps, retry: true });
+    expect(repo.clients[0]).toMatchObject({ status: "active", on_hold_since: null, lifetime_value: 100 });
+    expect(repo.revenue).toHaveLength(1);
+  });
+  it("without a retry, an already-paid row leaves the client alone (the second of the paid pair, or a stale replay)", async () => {
+    repo.revenue.push({ id: "rev-p", stripe_invoice_id: "in_1", client_id: "c1", amount: 49, status: "paid", event_type: "subscription", paid_at: "2026-11-05T10:00:00.000Z" });
+    repo.clients[0]!.status = "past_due";
+    await run("invoice.paid", invoice());
+    expect(repo.clients[0]).toMatchObject({ status: "past_due", lifetime_value: 100 });
+  });
   it("lifts a hold", async () => {
     repo.clients[0]!.on_hold_since = "2026-10-01T00:00:00Z";
     await run("invoice.paid", invoice());
@@ -244,6 +259,12 @@ describe("charge.succeeded", () => {
   beforeEach(() => {
     repo.clients.push(fakeClient({ id: "c1", stripe_customer_id: "cus_1", lifetime_value: 100, on_hold_since: "2026-10-01T00:00:00Z" }));
   });
+  it("a retry that finds the charge already saved lifts the hold but does not add the amount again", async () => {
+    repo.revenue.push({ id: "rev-c", stripe_invoice_id: "ch_1", client_id: "c1", amount: 150, status: "paid", event_type: "one_time", paid_at: "2026-11-04T09:00:00.000Z" });
+    await handleStripeEvent(stripeActor, event("charge.succeeded", charge()), { ...deps, retry: true });
+    expect(repo.clients[0]).toMatchObject({ lifetime_value: 100, on_hold_since: null });
+    expect(repo.revenue).toHaveLength(1);
+  });
   it("records a standalone charge once, adds to lifetime value and lifts a hold", async () => {
     await run("charge.succeeded", charge());
     await run("charge.succeeded", charge());
@@ -350,6 +371,14 @@ describe("ingestStripeEvent (the ledger)", () => {
     repo.ledger.set("evt_f", { status: "failed", attempts: 1, claimed_at: NOW.toISOString(), type: "customer.updated", livemode: true, error: "Could not update the client" });
     expect(await ingest(event("customer.updated", { id: "cus_1" }, { id: "evt_f" }))).toEqual({ result: "processed" });
     expect(repo.ledger.get("evt_f")).toMatchObject({ status: "processed", attempts: 2, error: null });
+  });
+  it("a taken-over event is handled as a retry: a payment saved by the failed attempt still gets its client update", async () => {
+    repo.clients[0]!.status = "past_due";
+    repo.revenue.push({ id: "rev-p", stripe_invoice_id: "in_9", client_id: "c1", amount: 49, status: "paid", event_type: "subscription", paid_at: "2026-11-05T10:00:00.000Z" });
+    repo.ledger.set("evt_paid", { status: "failed", attempts: 1, claimed_at: NOW.toISOString(), type: "invoice.paid", livemode: true, error: "Could not update the client" });
+    const e = event("invoice.paid", { id: "in_9", customer: "cus_1", amount_paid: 4900, status_transitions: { paid_at: sec("2026-11-05T10:00:00Z") } }, { id: "evt_paid" });
+    expect(await ingest(e)).toEqual({ result: "processed" });
+    expect(repo.clients[0]!.status).toBe("active");
   });
   it("an abandoned 'processing' row (older than 5 minutes) is taken over", async () => {
     repo.ledger.set("evt_old", { status: "processing", attempts: 1, claimed_at: new Date(NOW.getTime() - 6 * 60_000).toISOString(), type: "customer.updated", livemode: true, error: null });

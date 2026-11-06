@@ -33,6 +33,12 @@ export interface BillingDeps {
   repo: BillingRepo;
   stripe: StripeReads;
   now: () => Date;
+  /**
+   * True when this delivery takes over an earlier attempt of the SAME event that failed or was abandoned. That
+   * attempt may have saved the payment and then failed before updating the client; the retry then repairs the
+   * client (status, hold) instead of skipping it because the payment row already exists.
+   */
+  retry?: boolean;
 }
 
 /** The parts of a Stripe event this domain reads. */
@@ -147,6 +153,13 @@ async function onInvoicePaid(d: BillingDeps, invoice: InvoiceLike & { customer?:
 
   const existingRow = await d.repo.findRevenueByInvoice(invoice.id);
   const subId = getInvoiceSubscriptionId(invoice);
+  // A retry of this same event that finds the payment already saved: an earlier attempt saved it and then failed.
+  // Re-apply the client changes (status, hold, billing date), which are safe to repeat. The lifetime value is not
+  // re-added: the earlier attempt may already have added it, and adding it twice would overstate it.
+  if (existingRow && existingRow.status === "paid" && d.retry) {
+    await applyClientAfterPayment(d, client.id, invoice, subId, { addLifetimeValue: false });
+    return;
+  }
   // A 'failed' row must not block recording the eventual successful retry: flip it to paid instead of skipping.
   if (existingRow && existingRow.status !== "failed") return;
 
@@ -170,7 +183,18 @@ async function onInvoicePaid(d: BillingDeps, invoice: InvoiceLike & { customer?:
     }
   }
   if (won === 0) return;
+  await applyClientAfterPayment(d, client.id, invoice, subId, { addLifetimeValue: true });
+}
 
+/** The client side of a paid invoice: lifetime value, hold lifted, past_due/paused/onboarding back to active, billing date. */
+async function applyClientAfterPayment(
+  d: BillingDeps,
+  clientId: string,
+  invoice: InvoiceLike,
+  subId: string | null,
+  opts: { addLifetimeValue: boolean },
+): Promise<void> {
+  const client = { id: clientId };
   const current = await d.repo.getClient(client.id);
   if (!current) throw new RepoError("read the client");
 
@@ -186,6 +210,7 @@ async function onInvoicePaid(d: BillingDeps, invoice: InvoiceLike & { customer?:
   // Only an onboarding client needs the contract: they become active once the contract is signed or exempt.
   const contractStatus = current.status === "onboarding" ? await d.repo.projectContractStatus(client.id) : null;
   const update = clientUpdateAfterPayment({ current, amountPaidCents: invoice.amount_paid ?? 0, liveSubscription, contractStatus, now: d.now() });
+  if (!opts.addLifetimeValue) delete (update as { lifetime_value?: number }).lifetime_value;
   await d.repo.updateClient(client.id, update);
 }
 
@@ -241,7 +266,12 @@ async function onChargeSucceeded(d: BillingDeps, charge: Record<string, unknown>
   if (!client) return;
 
   const chargeId = charge.id as string;
-  if (await d.repo.findRevenueByInvoice(chargeId)) return;
+  if (await d.repo.findRevenueByInvoice(chargeId)) {
+    // A retry after an earlier attempt saved the charge and then failed: lift the hold (safe to repeat), but do
+    // not add the amount to the lifetime value a second time.
+    if (d.retry && client.on_hold_since) await d.repo.updateClient(client.id, { on_hold_since: null });
+    return;
+  }
   const amount = Number(charge.amount ?? 0) / 100;
   const inserted = await d.repo.insertRevenue({
     stripe_invoice_id: chargeId,
@@ -372,11 +402,11 @@ function ledgerError(e: unknown): string {
  * arrive several times: an event already processed answers "duplicate", one being processed right now "in_flight"
  * (Stripe then retries later), and a failed or abandoned one is taken over and processed again.
  */
-export async function ingestStripeEvent(actor: Actor, event: StripeEventLike, d: BillingDeps, appEnv: string | undefined): Promise<IngestOutcome> {
+export async function ingestStripeEvent(actor: Actor, event: StripeEventLike, d: BillingDeps, appEnv: string | undefined, vercelEnv?: string | undefined): Promise<IngestOutcome> {
   assertCan(actor, "billing.ingest");
 
   // Production holds only real business data: a correctly signed test-mode event is acknowledged and ignored.
-  const ignoreReason = ignoreTestModeEvent(event.livemode, appEnv) ? "test_mode_event_in_production" : !isHandledEventType(event.type) ? "unhandled_type" : null;
+  const ignoreReason = ignoreTestModeEvent(event.livemode, appEnv, vercelEnv) ? "test_mode_event_in_production" : !isHandledEventType(event.type) ? "unhandled_type" : null;
   if (ignoreReason) {
     await d.repo.insertLedger({ id: event.id, type: event.type, livemode: event.livemode, status: "ignored" });
     return { result: "ignored", reason: ignoreReason };
@@ -389,6 +419,7 @@ export async function ingestStripeEvent(actor: Actor, event: StripeEventLike, d:
     if (decision === "duplicate") return { result: "duplicate" };
     if (decision === "in_flight") return { result: "in_flight" };
     if (!(await d.repo.reclaimLedger(event.id, existing))) return { result: "in_flight" };
+    d = { ...d, retry: true };
   }
 
   try {

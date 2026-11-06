@@ -262,6 +262,14 @@ export function ledgerDecision(existing: { status: string; claimed_at: string },
 }
 
 /** Test-mode events are acknowledged and ignored in production: production only holds real business data. */
-export function ignoreTestModeEvent(livemode: boolean, appEnv: string | undefined): boolean {
-  return !livemode && appEnv === "production";
+/**
+ * Is this the live deployment? APP_ENV is optional (it defaults to local), so Vercel's own VERCEL_ENV, which
+ * Vercel always sets, counts too: a missing APP_ENV must never let Stripe test data into the real database.
+ */
+export function isProductionEnv(appEnv: string | undefined, vercelEnv: string | undefined): boolean {
+  return appEnv === "production" || vercelEnv === "production";
+}
+
+export function ignoreTestModeEvent(livemode: boolean, appEnv: string | undefined, vercelEnv?: string | undefined): boolean {
+  return !livemode && isProductionEnv(appEnv, vercelEnv);
 }

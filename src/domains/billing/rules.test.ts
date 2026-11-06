@@ -195,5 +195,10 @@ describe("the ledger", () => {
     expect(ignoreTestModeEvent(false, "staging")).toBe(false);
     expect(ignoreTestModeEvent(false, undefined)).toBe(false);
     expect(ignoreTestModeEvent(true, "production")).toBe(false);
+    // APP_ENV is optional; Vercel always sets VERCEL_ENV. A missing APP_ENV must not let test data into production.
+    expect(ignoreTestModeEvent(false, undefined, "production")).toBe(true);
+    expect(ignoreTestModeEvent(false, "local", "production")).toBe(true);
+    expect(ignoreTestModeEvent(false, undefined, "preview")).toBe(false);
+    expect(ignoreTestModeEvent(true, undefined, "production")).toBe(false);
   });
 });

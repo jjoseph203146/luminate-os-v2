@@ -14,7 +14,8 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
-const MAX_BODY_BYTES = 512 * 1024;
+// Large invoices (many line items) can produce big events; refusing one would lose it on every retry.
+const MAX_BODY_BYTES = 2 * 1024 * 1024;
 const STRIPE: Actor = { type: "integration", name: "stripe" };
 
 function json(body: Record<string, unknown>, status: number): Response {
@@ -67,7 +68,7 @@ export async function POST(request: Request): Promise<Response> {
   if (!event) return json({ error: "Invalid signature." }, 400);
 
   try {
-    const outcome = await ingestStripeEvent(STRIPE, event, routeDeps.billing(config.secretKey), process.env.APP_ENV);
+    const outcome = await ingestStripeEvent(STRIPE, event, routeDeps.billing(config.secretKey), process.env.APP_ENV, process.env.VERCEL_ENV);
     switch (outcome.result) {
       case "processed":
         return json({ received: true }, 200);

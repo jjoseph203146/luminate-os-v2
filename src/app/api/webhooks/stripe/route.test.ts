@@ -73,10 +73,14 @@ describe("configuration and method", () => {
       expect(res.headers.get("allow")).toBe("POST");
     }
   });
-  it("refuses a body over 512 KB, by declared length or by actual size", async () => {
-    expect((await post(payload(), { headers: { "content-length": String(600 * 1024) } })).status).toBe(413);
-    const big = payload({ object: { id: "cus_1", object: "customer", name: "x".repeat(600 * 1024) } });
+  it("refuses a body over 2 MB, by declared length or by actual size", async () => {
+    expect((await post(payload(), { headers: { "content-length": String(3 * 1024 * 1024) } })).status).toBe(413);
+    const big = payload({ object: { id: "cus_1", object: "customer", name: "x".repeat(3 * 1024 * 1024) } });
     expect((await post(big)).status).toBe(413);
+  });
+  it("accepts a large but legitimate event (a big invoice) under the limit", async () => {
+    const large = payload({ object: { id: "cus_1", object: "customer", name: "Acme Bakery", metadata: { note: "x".repeat(700 * 1024) } } });
+    expect((await post(large)).status).toBe(200);
   });
 });
 
@@ -118,6 +122,17 @@ describe("test-mode events", () => {
     expect(await res.json()).toEqual({ received: true, ignored: "test_mode_event_in_production" });
     expect(repo.clients[0]!.business_name).toBe("Unnamed");
     expect(repo.ledger.get("evt_tm")?.status).toBe("ignored");
+  });
+  it("are ignored when Vercel says production even if APP_ENV is missing", async () => {
+    delete process.env.APP_ENV;
+    process.env.VERCEL_ENV = "production";
+    try {
+      const res = await post(payload({ id: "evt_tm_vercel", livemode: false }), { secret: TEST });
+      expect(await res.json()).toEqual({ received: true, ignored: "test_mode_event_in_production" });
+      expect(repo.clients[0]!.business_name).toBe("Unnamed");
+    } finally {
+      delete process.env.VERCEL_ENV;
+    }
   });
   it("are processed outside production", async () => {
     process.env.APP_ENV = "staging";
