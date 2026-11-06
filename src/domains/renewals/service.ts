@@ -8,6 +8,9 @@ import { readDb } from "@/platform/db/server";
 import { writeAudit } from "@/platform/audit/audit";
 import { parseInput } from "@/platform/auth/schemas";
 import { RuleError } from "@/platform/errors";
+import { getStripeConfig } from "@/platform/env";
+import { getStripe } from "@/platform/stripe/client";
+import { createStripeMoneyReads, type StripeMoneyReads } from "@/platform/stripe/money-api";
 import * as repo from "./repo";
 import type { ClientBasics, CycleRecord } from "./repo";
 import {
@@ -22,9 +25,10 @@ import {
   planCycles,
   renewalOnOrAfter,
   shortDay,
+  syncSchedulesFromStripe,
   taskTitle,
 } from "./rules";
-import { actionSchema, agreementSchema, agreementStatusSchema, cycleSchema, manualPaymentSchema, markSentSchema } from "./schemas";
+import { actionSchema, agreementSchema, agreementStatusSchema, clientOnlySchema, cycleSchema, manualPaymentSchema, markSentSchema } from "./schemas";
 import type { Action, Agreement, BillingTask, BillingToday, ClientBilling, PlannerAgreement } from "./types";
 
 type Owner = Extract<Actor, { type: "owner" }>;
@@ -55,6 +59,9 @@ function toPlanner(agreements: Agreement[], clients: ClientBasics[]): PlannerAgr
 
 export interface BillingRunSummary {
   today: string;
+  schedulesCreated: number;
+  schedulesUpdated: number;
+  schedulesCancelled: number;
   cyclesCreated: number;
   paid: number;
   tasksCreated: number;
@@ -69,9 +76,21 @@ export interface BillingRunSummary {
  * left half-done by an interrupted run. A failing step does not stop the others; the run then fails as a whole, so it
  * is shown in Automations and retried, and nothing is skipped silently.
  */
-export async function runBillingTasks(actor: Actor, now: Date, dbOverride?: Db): Promise<BillingRunSummary> {
+export interface BillingJobDeps {
+  db?: Db;
+  /** Stripe reads (read-only key); null when Stripe is not set up. */
+  stripe?: StripeMoneyReads | null;
+}
+
+function defaultStripe(): StripeMoneyReads | null {
+  const config = getStripeConfig();
+  return config ? createStripeMoneyReads(getStripe(config.secretKey)) : null;
+}
+
+export async function runBillingTasks(actor: Actor, now: Date, deps: BillingJobDeps = {}): Promise<BillingRunSummary> {
   assertCan(actor, "billing.schedule");
-  const db = dbOverride ?? (await readDb(actor));
+  const db = deps.db ?? (await readDb(actor));
+  const stripe = "stripe" in deps ? (deps.stripe ?? null) : defaultStripe();
   const today = todayIn(now);
   const at = now.toISOString();
   const by = byOf(actor);
@@ -84,7 +103,45 @@ export async function runBillingTasks(actor: Actor, now: Date, dbOverride?: Db):
       console.warn("billing job: step failed", { what, kind: (e as { name?: string })?.name ?? "error" });
     }
   };
-  const summary: BillingRunSummary = { today, cyclesCreated: 0, paid: 0, tasksCreated: 0, tasksClosed: 0, cyclesCancelled: 0, workItemsRepaired: 0 };
+  const summary: BillingRunSummary = { today, schedulesCreated: 0, schedulesUpdated: 0, schedulesCancelled: 0, cyclesCreated: 0, paid: 0, tasksCreated: 0, tasksClosed: 0, cyclesCancelled: 0, workItemsRepaired: 0 };
+
+  // 0. Schedules follow each client's Stripe subscription: price, renewal day, start, sender, paused or ended.
+  //    If Stripe cannot be read, the run fails visibly but the existing schedules still get their tasks below.
+  if (stripe) {
+    await step("read Stripe subscriptions", async () => {
+      const subs = await stripe.listSubscriptions();
+      const allClients = await repo.listClients(db);
+      const planOf = new Map(allClients.map((c) => [c.id, c.planName]));
+      const sync = syncSchedulesFromStripe(subs, allClients, await repo.listAgreements(db));
+      for (const want of sync.create) {
+        await step("create a schedule", async () => {
+          const created = await repo.insertAgreement(db, { ...want, planName: planOf.get(want.clientId) ?? null, paymentLinkUrl: null, tasksFrom: today, source: "stripe", updatedBy: null });
+          if (created !== "conflict") summary.schedulesCreated++;
+        });
+      }
+      for (const u of sync.update) {
+        await step("update a schedule", async () => {
+          const p = u.patch;
+          const changed = await repo.updateAgreement(db, u.agreementId, {
+            ...(p.stripeSubscriptionId !== undefined ? { stripe_subscription_id: p.stripeSubscriptionId } : {}),
+            ...(p.monthlyPriceCents !== undefined ? { monthly_price_cents: p.monthlyPriceCents } : {}),
+            ...(p.anniversaryDay !== undefined ? { anniversary_day: p.anniversaryDay } : {}),
+            ...(p.startsOn !== undefined ? { starts_on: p.startsOn } : {}),
+            ...(p.invoiceSender !== undefined ? { invoice_sender: p.invoiceSender } : {}),
+            ...(p.status === "paused" ? { status: "paused", paused_at: at } : {}),
+            // Resumed in Stripe: tasks restart from today, so renewals missed while paused do not suddenly appear.
+            ...(u.resumed ? { status: "active", paused_at: null, tasks_from: today } : {}),
+          });
+          if (changed > 0) summary.schedulesUpdated++;
+        });
+      }
+      for (const id of sync.cancel) {
+        await step("cancel a schedule", async () => {
+          if ((await repo.updateAgreement(db, id, { status: "cancelled", cancelled_at: at })) > 0) summary.schedulesCancelled++;
+        });
+      }
+    });
+  }
 
   const agreementRows = await repo.listAgreements(db);
   const clients = await repo.listClients(db, [...new Set(agreementRows.map((a) => a.clientId))]);
@@ -253,10 +310,11 @@ export async function getClientBilling(actor: Actor, clientId: string, now: Date
       cycles,
       tasks: await buildTasks(db, actions, today),
       nextRenewal: agreement && agreement.status === "active" ? renewalOnOrAfter(today > agreement.startsOn ? today : agreement.startsOn, agreement.anniversaryDay) : null,
+      hasStripeCustomer: Boolean(client?.stripeCustomerId),
     };
   } catch (e) {
     console.warn("client billing: unavailable", { kind: (e as { name?: string })?.name ?? "error" });
-    return { available: false, agreement: null, suggestion, cycles: [], tasks: [], nextRenewal: null };
+    return { available: false, agreement: null, suggestion, cycles: [], tasks: [], nextRenewal: null, hasStripeCustomer: Boolean(client?.stripeCustomerId) };
   }
 }
 
@@ -280,14 +338,16 @@ export async function saveAgreement(actor: Owner, raw: unknown, now: Date = new 
   };
   const existing = await repo.getOpenAgreement(db, input.clientId);
   if (!existing) {
-    const id = await repo.insertAgreement(db, { clientId: input.clientId, ...fields, tasksFrom: todayIn(now), updatedBy: actor.userId });
+    const id = await repo.insertAgreement(db, { clientId: input.clientId, ...fields, status: "active", tasksFrom: todayIn(now), source: "manual", stripeSubscriptionId: null, updatedBy: actor.userId });
     if (id === "conflict") throw new RuleError("A billing schedule was just saved for this client. Reload the page.");
-    await audit(actor, { action: "billing_schedule.created", entityType: "care_agreement", entityId: id, clientId: input.clientId, after: fields });
+    await audit(actor, { action: "billing_schedule.created", entityType: "care_agreement", entityId: id, clientId: input.clientId, after: { ...fields, source: "manual" } });
     return { message: "Billing schedule saved. Billing tasks start with the next renewal." };
   }
   const before = { planName: existing.planName, monthlyPriceCents: existing.monthlyPriceCents, anniversaryDay: existing.anniversaryDay, startsOn: existing.startsOn, invoiceSender: existing.invoiceSender, paymentLinkUrl: existing.paymentLinkUrl };
-  if (JSON.stringify(before) === JSON.stringify(fields)) return { message: "No changes to save." };
+  if (JSON.stringify(before) === JSON.stringify(fields) && existing.source === "manual") return { message: "No changes to save." };
+  // Saving the form takes the schedule over by hand: from now on the billing job no longer changes it from Stripe.
   await repo.updateAgreement(db, existing.id, {
+    source: "manual",
     plan_name: fields.planName,
     monthly_price_cents: fields.monthlyPriceCents,
     anniversary_day: fields.anniversaryDay,
@@ -296,8 +356,24 @@ export async function saveAgreement(actor: Owner, raw: unknown, now: Date = new 
     payment_link_url: fields.paymentLinkUrl,
     updated_by: actor.userId,
   });
-  await audit(actor, { action: "billing_schedule.updated", entityType: "care_agreement", entityId: existing.id, clientId: input.clientId, before, after: fields });
-  return { message: "Billing schedule saved. Renewals already created keep their amount and date." };
+  await audit(actor, { action: "billing_schedule.updated", entityType: "care_agreement", entityId: existing.id, clientId: input.clientId, before: { ...before, source: existing.source }, after: { ...fields, source: "manual" } });
+  return { message: existing.source === "stripe" ? "Saved. This schedule is now managed by hand and no longer follows Stripe." : "Billing schedule saved. Renewals already created keep their amount and date." };
+}
+
+/** Hands a schedule back to Stripe: the billing job brings it in step with the client's subscription within the hour. */
+export async function followStripe(actor: Owner, raw: unknown): Promise<{ message: string }> {
+  assertCan(actor, "billing.tasks");
+  const input = parseInput(clientOnlySchema, raw);
+  const db = await readDb(actor);
+  const client = await repo.getClient(db, input.clientId);
+  if (!client) throw new RuleError("That client could not be found.");
+  if (!client.stripeCustomerId) throw new RuleError("This client has no Stripe customer, so there is no subscription to follow.");
+  const existing = await repo.getOpenAgreement(db, input.clientId);
+  if (!existing) return { message: "Billing follows Stripe: the schedule is created from the subscription within the hour." };
+  if (existing.source === "stripe") return { message: "This schedule already follows Stripe." };
+  await repo.updateAgreement(db, existing.id, { source: "stripe", updated_by: actor.userId });
+  await audit(actor, { action: "billing_schedule.follows_stripe", entityType: "care_agreement", entityId: existing.id, clientId: input.clientId, before: { source: "manual" } });
+  return { message: "This schedule follows Stripe again. It is updated from the subscription within the hour (and cancelled if there is none)." };
 }
 
 /** Closes the client's open billing tasks right away (the job would within the hour). */
@@ -314,6 +390,9 @@ export async function changeAgreementStatus(actor: Owner, raw: unknown, now: Dat
   const db = await readDb(actor);
   const agreement = await repo.getOpenAgreement(db, input.clientId);
   if (!agreement) throw new RuleError("This client has no billing schedule.");
+  if (agreement.source === "stripe") {
+    throw new RuleError("This schedule follows the Stripe subscription. Pause or cancel the subscription in Stripe (the tasks follow within the hour), or manage the schedule by hand first.");
+  }
   const at = now.toISOString();
   const by = byOf(actor);
   if (input.change === "pause") {

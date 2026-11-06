@@ -396,6 +396,8 @@ export type Database = {
           paused_at: string | null
           payment_link_url: string | null
           plan_name: string | null
+          source: string
+          stripe_subscription_id: string | null
           starts_on: string
           status: string
           tasks_from: string
@@ -413,6 +415,8 @@ export type Database = {
           paused_at?: string | null
           payment_link_url?: string | null
           plan_name?: string | null
+          source?: string
+          stripe_subscription_id?: string | null
           starts_on: string
           status?: string
           tasks_from?: string
@@ -430,6 +434,8 @@ export type Database = {
           paused_at?: string | null
           payment_link_url?: string | null
           plan_name?: string | null
+          source?: string
+          stripe_subscription_id?: string | null
           starts_on?: string
           status?: string
           tasks_from?: string

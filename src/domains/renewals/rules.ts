@@ -1,7 +1,8 @@
 // Pure rules for SOP billing tasks (docs/architecture/17-billing-tasks.md; SOP ladder in 06 s6). No database, no
 // clock reads: `today` (a New York calendar date) is passed in, so every case is testable.
 import { addCalendarDays, monthDayClamped, toLocalDate } from "@/platform/calendar/business-days";
-import type { Action, ActionStatus, BillingHealth, Cycle, InvoiceSender, Milestone, PlannerAgreement, VerifiedPayment } from "./types";
+import type { MoneySubscription } from "@/platform/stripe/money-api";
+import type { Action, ActionStatus, Agreement, BillingHealth, Cycle, InvoiceSender, Milestone, PlannerAgreement, VerifiedPayment } from "./types";
 
 /** Billing dates are New York calendar dates, whatever the server's clock zone. */
 export const BILLING_TIME_ZONE = "America/New_York";
@@ -247,4 +248,94 @@ export function billingHealth(job: { exists: boolean; enabled: boolean; lastSucc
   if (!job.lastSuccessAt) return { state: "never", lastSuccessAt: null };
   if (now.getTime() - Date.parse(job.lastSuccessAt) > STALE_AFTER_MS) return { state: "stale", lastSuccessAt: job.lastSuccessAt };
   return { state: "ok", lastSuccessAt: job.lastSuccessAt };
+}
+
+// --- schedules from Stripe ------------------------------------------------------------------------------------------
+
+/** Subscription states that still bill (or are only paused). Canceled and never-completed ones do not. */
+const LIVE_STATUS_RANK: Record<string, number> = { active: 0, past_due: 1, unpaid: 1, trialing: 2, paused: 3 };
+
+/** The UTC calendar date of a Stripe timestamp (Stripe bills on its anchor's UTC day). */
+const utcDate = (sec: number) => new Date(sec * 1000).toISOString().slice(0, 10);
+
+export interface ScheduleFromStripe {
+  clientId: string;
+  stripeSubscriptionId: string;
+  monthlyPriceCents: number;
+  anniversaryDay: number;
+  startsOn: string;
+  invoiceSender: InvoiceSender;
+  status: "active" | "paused";
+}
+
+/** The subscription a client's schedule follows: the live one in the best state, newest first. Null when none bills. */
+export function pickRenewalSubscription(subs: MoneySubscription[]): MoneySubscription | null {
+  return (
+    subs
+      .filter((s) => s.status in LIVE_STATUS_RANK && s.monthlyCents > 0 && (s.billingCycleAnchor !== null || s.nextBillingAt !== null))
+      .sort((a, b) => (a.paused ? 9 : (LIVE_STATUS_RANK[a.status] ?? 9)) - (b.paused ? 9 : (LIVE_STATUS_RANK[b.status] ?? 9)) || (b.startDate ?? 0) - (a.startDate ?? 0) || a.id.localeCompare(b.id))[0] ?? null
+  );
+}
+
+/** The schedule a Stripe subscription implies: its price, its renewal day, its start, who sends the invoice. */
+export function scheduleFromStripe(clientId: string, sub: MoneySubscription): ScheduleFromStripe {
+  const anchor = sub.billingCycleAnchor ?? sub.nextBillingAt ?? 0;
+  return {
+    clientId,
+    stripeSubscriptionId: sub.id,
+    monthlyPriceCents: sub.monthlyCents,
+    anniversaryDay: Number(utcDate(anchor).slice(8, 10)),
+    startsOn: utcDate(sub.startDate ?? anchor),
+    // Autopay charges the card; send_invoice means Stripe emails the invoice. Either way Stripe is the one sender.
+    invoiceSender: sub.collectionMethod === "send_invoice" ? "stripe_invoice" : "stripe_autopay",
+    status: sub.paused || sub.status === "paused" ? "paused" : "active",
+  };
+}
+
+export interface StripeSync {
+  create: ScheduleFromStripe[];
+  update: { agreementId: string; patch: Partial<ScheduleFromStripe>; resumed: boolean }[];
+  /** Stripe-managed schedules whose subscription no longer bills: cancelled (history kept). */
+  cancel: string[];
+}
+
+/**
+ * Keeps every Stripe-managed schedule in step with Stripe: a client with a live subscription gets a schedule (or an
+ * updated one), and one whose subscription ended is cancelled. Schedules the owner manages by hand are never touched,
+ * and archived clients are left alone.
+ */
+export function syncSchedulesFromStripe(
+  subs: MoneySubscription[],
+  clients: { id: string; stripeCustomerId: string | null; archived: boolean }[],
+  existing: Agreement[],
+): StripeSync {
+  const out: StripeSync = { create: [], update: [], cancel: [] };
+  const byCustomer = new Map<string, MoneySubscription[]>();
+  for (const s of subs) byCustomer.set(s.customerId, [...(byCustomer.get(s.customerId) ?? []), s]);
+  const open = new Map(existing.filter((a) => a.status !== "cancelled").map((a) => [a.clientId, a]));
+
+  for (const c of clients) {
+    if (c.archived || !c.stripeCustomerId) continue;
+    const current = open.get(c.id);
+    if (current?.source === "manual") continue;
+    const sub = pickRenewalSubscription(byCustomer.get(c.stripeCustomerId) ?? []);
+    if (!sub) {
+      if (current) out.cancel.push(current.id);
+      continue;
+    }
+    const want = scheduleFromStripe(c.id, sub);
+    if (!current) {
+      out.create.push(want);
+      continue;
+    }
+    const patch: Partial<ScheduleFromStripe> = {};
+    if (current.stripeSubscriptionId !== want.stripeSubscriptionId) patch.stripeSubscriptionId = want.stripeSubscriptionId;
+    if (current.monthlyPriceCents !== want.monthlyPriceCents) patch.monthlyPriceCents = want.monthlyPriceCents;
+    if (current.anniversaryDay !== want.anniversaryDay) patch.anniversaryDay = want.anniversaryDay;
+    if (current.startsOn !== want.startsOn) patch.startsOn = want.startsOn;
+    if (current.invoiceSender !== want.invoiceSender) patch.invoiceSender = want.invoiceSender;
+    if (current.status !== want.status) patch.status = want.status;
+    if (Object.keys(patch).length > 0) out.update.push({ agreementId: current.id, patch, resumed: current.status === "paused" && want.status === "active" });
+  }
+  return out;
 }

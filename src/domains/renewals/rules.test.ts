@@ -11,8 +11,12 @@ import {
   planCycles,
   renewalDate,
   renewalOnOrAfter,
+  pickRenewalSubscription,
+  scheduleFromStripe,
+  syncSchedulesFromStripe,
   taskTitle,
 } from "./rules";
+import type { MoneySubscription } from "@/platform/stripe/money-api";
 import type { Action, Cycle, PlannerAgreement, VerifiedPayment } from "./types";
 
 const agreement = (over: Partial<PlannerAgreement> = {}): PlannerAgreement => ({
@@ -26,6 +30,8 @@ const agreement = (over: Partial<PlannerAgreement> = {}): PlannerAgreement => ({
   invoiceSender: "luminate",
   paymentLinkUrl: null,
   tasksFrom: "2026-01-01",
+  source: "manual",
+  stripeSubscriptionId: null,
   clientArchived: false,
   clientPaused: false,
   ...over,
@@ -255,5 +261,60 @@ describe("links and health", () => {
     expect(billingHealth({ ...job, lastRunFailed: true }, now).state).toBe("failing");
     expect(billingHealth({ ...job, lastSuccessAt: null }, now).state).toBe("never");
     expect(billingHealth({ ...job, exists: false }, now).state).toBe("not_set_up");
+  });
+});
+
+describe("schedules from Stripe", () => {
+  const sec = (iso: string) => Math.floor(Date.parse(iso) / 1000);
+  const sub = (over: Partial<MoneySubscription> = {}): MoneySubscription => ({
+    id: "sub_1",
+    customerId: "cus_1",
+    customerName: null,
+    status: "active",
+    collectionMethod: "charge_automatically",
+    periodCents: 3500,
+    monthlyCents: 3500,
+    nextBillingAt: sec("2026-11-12T18:00:00Z"),
+    cancelAtPeriodEnd: false,
+    paused: false,
+    pauseResumesAt: null,
+    currentPeriodPaid: true,
+    billingCycleAnchor: sec("2026-01-12T18:00:00Z"),
+    startDate: sec("2026-01-12T18:00:00Z"),
+    ...over,
+  });
+  const client = { id: "c1", stripeCustomerId: "cus_1", archived: false };
+  const stripeAgreement = (over: Partial<PlannerAgreement> = {}) => agreement({ source: "stripe", stripeSubscriptionId: "sub_1", invoiceSender: "stripe_autopay", ...over });
+
+  it("takes the renewal day from Stripe's billing anchor, and the sender from how Stripe collects", () => {
+    expect(scheduleFromStripe("c1", sub())).toEqual({ clientId: "c1", stripeSubscriptionId: "sub_1", monthlyPriceCents: 3500, anniversaryDay: 12, startsOn: "2026-01-12", invoiceSender: "stripe_autopay", status: "active" });
+    expect(scheduleFromStripe("c1", sub({ collectionMethod: "send_invoice" })).invoiceSender).toBe("stripe_invoice");
+    expect(scheduleFromStripe("c1", sub({ billingCycleAnchor: sec("2026-01-31T18:00:00Z") })).anniversaryDay).toBe(31);
+    expect(scheduleFromStripe("c1", sub({ paused: true })).status).toBe("paused");
+  });
+  it("follows the live subscription, never a canceled or never-paid one", () => {
+    expect(pickRenewalSubscription([sub({ id: "sub_old", status: "canceled" }), sub({ id: "sub_new" })])?.id).toBe("sub_new");
+    expect(pickRenewalSubscription([sub({ status: "incomplete_expired" }), sub({ status: "incomplete" })])).toBeNull();
+    expect(pickRenewalSubscription([sub({ id: "p", paused: true }), sub({ id: "a" })])?.id).toBe("a");
+    expect(pickRenewalSubscription([sub({ monthlyCents: 0 })])).toBeNull();
+  });
+  it("creates a schedule for a client with a live subscription", () => {
+    expect(syncSchedulesFromStripe([sub()], [client], [])).toEqual({ create: [scheduleFromStripe("c1", sub())], update: [], cancel: [] });
+  });
+  it("updates price, day, sender and paused state from Stripe; nothing when already in step", () => {
+    const current = stripeAgreement({ anniversaryDay: 12, startsOn: "2026-01-12", monthlyPriceCents: 3500 });
+    expect(syncSchedulesFromStripe([sub()], [client], [current])).toEqual({ create: [], update: [], cancel: [] });
+    const changed = syncSchedulesFromStripe([sub({ monthlyCents: 4900, paused: true })], [client], [current]);
+    expect(changed.update).toEqual([{ agreementId: "ag1", patch: { monthlyPriceCents: 4900, status: "paused" }, resumed: false }]);
+    expect(syncSchedulesFromStripe([sub()], [client], [stripeAgreement({ status: "paused", startsOn: "2026-01-12" })]).update[0]).toMatchObject({ resumed: true, patch: { status: "active" } });
+  });
+  it("cancels the schedule when the subscription ends", () => {
+    expect(syncSchedulesFromStripe([sub({ status: "canceled" })], [client], [stripeAgreement()]).cancel).toEqual(["ag1"]);
+    expect(syncSchedulesFromStripe([], [client], [stripeAgreement()]).cancel).toEqual(["ag1"]);
+  });
+  it("never touches a schedule managed by hand, an archived client, or a client with no Stripe customer", () => {
+    expect(syncSchedulesFromStripe([], [client], [agreement({ source: "manual" })])).toEqual({ create: [], update: [], cancel: [] });
+    expect(syncSchedulesFromStripe([sub()], [{ ...client, archived: true }], [])).toEqual({ create: [], update: [], cancel: [] });
+    expect(syncSchedulesFromStripe([sub()], [{ ...client, stripeCustomerId: null }], [])).toEqual({ create: [], update: [], cancel: [] });
   });
 });

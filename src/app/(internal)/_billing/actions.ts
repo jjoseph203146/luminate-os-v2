@@ -37,3 +37,4 @@ export const markReviewedAction = billingAction((a, raw) => renewals.markReviewe
 export const recordPaymentAction = billingAction((a, raw) => renewals.recordManualPayment(a, raw));
 export const saveScheduleAction = billingAction((a, raw) => renewals.saveAgreement(a, raw));
 export const scheduleStatusAction = billingAction((a, raw) => renewals.changeAgreementStatus(a, raw));
+export const followStripeAction = billingAction((a, raw) => renewals.followStripe(a, raw));

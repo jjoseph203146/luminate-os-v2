@@ -59,6 +59,7 @@ export const agreementStatusSchema = z.object({
   confirm: z.preprocess((v) => str(v), z.string()).optional(),
 });
 
+export const clientOnlySchema = z.object({ clientId: id("client") });
 export const markSentSchema = z.object({ cycleId: id("renewal"), invoiceUrl: httpsUrl });
 export const cycleSchema = z.object({ cycleId: id("renewal") });
 export const actionSchema = z.object({ actionId: id("billing task") });

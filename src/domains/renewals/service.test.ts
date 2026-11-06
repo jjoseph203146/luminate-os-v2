@@ -42,16 +42,18 @@ vi.mock("./repo", () => {
     },
     listVerifiedPayments: async (_db: unknown, ids: string[], since: string) => store.payments.filter((p) => ids.includes(p.clientId) && p.paidAt >= since),
     jobState: async () => store.job,
-    insertAgreement: async (_db: unknown, a: Omit<Agreement, "id" | "status">) => {
+    insertAgreement: async (_db: unknown, a: Omit<Agreement, "id"> & { updatedBy?: string | null }) => {
       if (store.agreements.some((x) => x.clientId === a.clientId && x.status !== "cancelled")) return "conflict";
-      const ag = { ...a, id: id(), status: "active" as const };
+      const { updatedBy: _by, ...rest } = a;
+      void _by;
+      const ag: Agreement = { ...rest, id: id() };
       store.agreements.push(ag);
       return ag.id;
     },
     updateAgreement: async (_db: unknown, aid: string, patch: Record<string, unknown>, onlyIf?: string) => {
       const a = store.agreements.find((x) => x.id === aid && (!onlyIf || x.status === onlyIf));
       if (!a) return 0;
-      const map: Record<string, keyof Agreement> = { plan_name: "planName", monthly_price_cents: "monthlyPriceCents", anniversary_day: "anniversaryDay", starts_on: "startsOn", invoice_sender: "invoiceSender", payment_link_url: "paymentLinkUrl", tasks_from: "tasksFrom", status: "status" };
+      const map: Record<string, keyof Agreement> = { plan_name: "planName", monthly_price_cents: "monthlyPriceCents", anniversary_day: "anniversaryDay", starts_on: "startsOn", invoice_sender: "invoiceSender", payment_link_url: "paymentLinkUrl", tasks_from: "tasksFrom", status: "status", source: "source", stripe_subscription_id: "stripeSubscriptionId" };
       for (const [k, v] of Object.entries(patch)) if (map[k]) (a as unknown as Record<string, unknown>)[map[k]] = v;
       return 1;
     },
@@ -112,7 +114,7 @@ vi.mock("./repo", () => {
   };
 });
 
-import { changeAgreementStatus, getBillingToday, markInvoiceSent, markReminderSent, markReviewed, recordManualPayment, runBillingTasks, saveAgreement } from "./service";
+import { changeAgreementStatus, followStripe, getBillingToday, markInvoiceSent, markReminderSent, markReviewed, recordManualPayment, runBillingTasks, saveAgreement } from "./service";
 import { PermissionError, RuleError } from "@/platform/errors";
 
 const system = { type: "system", name: "billing_tasks" } as const;
@@ -120,7 +122,7 @@ const owner = { type: "owner", userId: "11111111-1111-4111-8111-111111111111", e
 const CLIENT = "22222222-2222-4222-8222-222222222222";
 /** Noon in New York on a date. */
 const at = (date: string) => new Date(`${date}T17:00:00Z`);
-const run = (date: string) => runBillingTasks(system, at(date));
+const run = (date: string) => runBillingTasks(system, at(date), { stripe: null });
 const open = () => store.actions.filter((a) => a.status === "open").map((a) => a.milestone);
 const tasksOf = () => store.workItems.map((w) => `${w.status}:${w.key.split(":").slice(2).join(":")}`);
 
@@ -131,7 +133,7 @@ beforeEach(() => {
   Object.assign(store, { clients: [], agreements: [], cycles: [], actions: [], workItems: [], payments: [], failNextActionInsert: false, seq: 0 });
   store.job = { exists: true, enabled: true, lastSuccessAt: null, lastRunFailed: false };
   store.clients.push({ id: CLIENT, name: "Oak & Ember Coffee", status: "active", archived: false, subscriptionPrice: 35, planName: "Essential", billingAnchorDate: "2026-11-12", clientSince: "2026-01-12", stripeCustomerId: "cus_1" });
-  store.agreements.push({ id: "ag-1", clientId: CLIENT, planName: "Essential", monthlyPriceCents: 3500, anniversaryDay: 12, startsOn: "2026-01-12", status: "active", invoiceSender: "luminate", paymentLinkUrl: null, tasksFrom: "2026-11-01" });
+  store.agreements.push({ id: "ag-1", clientId: CLIENT, planName: "Essential", monthlyPriceCents: 3500, anniversaryDay: 12, startsOn: "2026-01-12", status: "active", invoiceSender: "luminate", paymentLinkUrl: null, tasksFrom: "2026-11-01", source: "manual", stripeSubscriptionId: null });
 });
 
 describe("the billing job", () => {
@@ -276,6 +278,63 @@ describe("owner actions", () => {
       ["Send renewal invoice/payment link", "Oak & Ember Coffee", 3500, "2026-11-07", "normal", true],
     ]);
     expect(t.tasks[0]!.invoiceHref).toBe("https://dashboard.stripe.com/customers/cus_1");
+  });
+});
+
+describe("schedules follow Stripe", () => {
+  const sec = (iso: string) => Math.floor(Date.parse(iso) / 1000);
+  const sub = {
+    id: "sub_1",
+    customerId: "cus_1",
+    customerName: null,
+    status: "active",
+    collectionMethod: "charge_automatically",
+    periodCents: 4900,
+    monthlyCents: 4900,
+    nextBillingAt: sec("2026-11-20T18:00:00Z"),
+    cancelAtPeriodEnd: false,
+    paused: false,
+    pauseResumesAt: null,
+    currentPeriodPaid: true,
+    billingCycleAnchor: sec("2026-02-20T18:00:00Z"),
+    startDate: sec("2026-02-20T18:00:00Z"),
+  };
+  const stripe = (subs: unknown[]) => ({ listSubscriptions: vi.fn(async () => subs), listOpenInvoices: vi.fn(async () => []) });
+
+  beforeEach(() => {
+    store.agreements = [];
+  });
+
+  it("creates the schedule from the subscription (no setup) and makes the tasks on Stripe's renewal date", async () => {
+    const s = await runBillingTasks(system, at("2026-11-20"), { stripe: stripe([sub]) as never });
+    expect(s.schedulesCreated).toBe(1);
+    expect(store.agreements[0]).toMatchObject({ source: "stripe", stripeSubscriptionId: "sub_1", anniversaryDay: 20, monthlyPriceCents: 4900, invoiceSender: "stripe_autopay", planName: "Essential", tasksFrom: "2026-11-20" });
+    // Autopay: Stripe charges, so no "send invoice" task; Day 0 checks the payment.
+    expect(tasksOf()).toEqual(["ready:2026-11-20:verify_payment"]);
+  });
+  it("updates and then cancels with the subscription, closing the tasks", async () => {
+    await runBillingTasks(system, at("2026-11-20"), { stripe: stripe([sub]) as never });
+    await runBillingTasks(system, at("2026-11-21"), { stripe: stripe([{ ...sub, monthlyCents: 9900 }]) as never });
+    expect(store.agreements[0]!.monthlyPriceCents).toBe(9900);
+    await runBillingTasks(system, at("2026-11-22"), { stripe: stripe([{ ...sub, status: "canceled" }]) as never });
+    expect(store.agreements[0]!.status).toBe("cancelled");
+    expect(open()).toEqual([]);
+  });
+  it("a Stripe outage fails the run visibly, but existing schedules still get their tasks", async () => {
+    await runBillingTasks(system, at("2026-11-20"), { stripe: stripe([sub]) as never });
+    const down = { listSubscriptions: vi.fn(async () => Promise.reject(new Error("Stripe down"))), listOpenInvoices: vi.fn() };
+    await expect(runBillingTasks(system, at("2026-11-23"), { stripe: down as never })).rejects.toThrow(/read Stripe subscriptions/);
+    expect(open()).toContain("friendly_reminder");
+  });
+  it("the owner can take a schedule over by hand, and Stripe then leaves it alone; pausing needs that", async () => {
+    await runBillingTasks(system, at("2026-11-20"), { stripe: stripe([sub]) as never });
+    await expect(changeAgreementStatus(owner, { clientId: CLIENT, change: "pause" })).rejects.toThrow(/Pause or cancel the subscription in Stripe/);
+    await saveAgreement(owner, { clientId: CLIENT, monthlyPrice: "35", anniversaryDay: "20", startsOn: "2026-02-20", invoiceSender: "luminate" });
+    expect(store.agreements[0]).toMatchObject({ source: "manual", monthlyPriceCents: 3500 });
+    await runBillingTasks(system, at("2026-11-21"), { stripe: stripe([]) as never });
+    expect(store.agreements[0]).toMatchObject({ source: "manual", status: "active" });
+    await followStripe(owner, { clientId: CLIENT });
+    expect(store.agreements[0]!.source).toBe("stripe");
   });
 });
 

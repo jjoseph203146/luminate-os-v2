@@ -5,6 +5,8 @@ export type AgreementStatus = "active" | "paused" | "cancelled";
 export type CycleStatus = "open" | "paid" | "paid_manual" | "cancelled";
 export type Milestone = "send_invoice" | "verify_payment" | "friendly_reminder" | "grace_review";
 export type ActionStatus = "open" | "done" | "resolved" | "cancelled";
+/** "stripe": kept in step with the client's Stripe subscription by the billing job. "manual": set by the owner. */
+export type ScheduleSource = "stripe" | "manual";
 
 export interface Agreement {
   id: string;
@@ -17,6 +19,8 @@ export interface Agreement {
   invoiceSender: InvoiceSender;
   paymentLinkUrl: string | null;
   tasksFrom: string;
+  source: ScheduleSource;
+  stripeSubscriptionId: string | null;
 }
 
 /** An agreement with what the planner needs to know about its client. */
@@ -90,7 +94,7 @@ export interface BillingHealth {
 
 export interface BillingToday {
   tasks: BillingTask[];
-  /** Active clients with a plan price but no billing schedule: no billing tasks are made for them. */
+  /** Active clients with a plan price but no billing schedule (no Stripe subscription found): no billing tasks for them. */
   missingSchedules: { clientId: string; clientName: string }[];
   health: BillingHealth;
 }
@@ -102,5 +106,6 @@ export interface ClientBilling {
   cycles: (Cycle & { manualAmountCents: number | null; manualMethod: string | null; manualNote: string | null; invoiceUrl: string | null })[];
   tasks: BillingTask[];
   nextRenewal: string | null;
+  hasStripeCustomer: boolean;
   available: boolean;
 }

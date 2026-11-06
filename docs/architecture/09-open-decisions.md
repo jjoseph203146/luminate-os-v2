@@ -18,7 +18,7 @@ These are the questions only the owner can answer. Each has a recommendation. Th
 |---|---|---|
 | D4 | **Lead stage mapping** for the 10 existing leads: `interested` → ?, `contacted` → ?, `quoted` → ? | interested → New Lead; contacted → In Discussion; quoted → Proposal Sent |
 | D5 | **Business calendar:** Monday–Friday, Eastern time? Which holidays count as non-business days? | Mon–Fri, America/New_York; US federal holidays you actually take off |
-| D6 | **Existing clients' care terms:** (2026-11-06: entered per client in the Billing tab's billing schedule, prefilled from the client record; doc 17) for each active client, their tier (Essential / Professional / Growth), actual monthly price (grandfathered?), and anniversary day | I prepare a pre-filled list from Stripe for you to confirm |
+| D6 | **Existing clients' care terms:** (2026-11-06, owner: billing follows each client's Stripe subscription; a schedule can be managed by hand in the Billing tab; doc 17) for each active client, their tier (Essential / Professional / Growth), actual monthly price (grandfathered?), and anniversary day | I prepare a pre-filled list from Stripe for you to confirm |
 | D7 | **Follow-up reminders:** tasks in Luminate OS only, or also Google Calendar events? (SOP2 §6 mentions your calendar) | OS tasks only for M1; calendar sync later |
 | D8 | **E-signature provider** for agreements (SOP6 2.2). Which one do you use, if any? | For M1, upload the signed PDF plus its audit certificate; integrate the provider later |
 | D9 | **Which system issues project invoices** (deposit and final): Stripe or Zoho? | Stripe invoices (Zoho imports them), so payment status is verifiable |

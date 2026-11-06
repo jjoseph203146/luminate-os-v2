@@ -28,6 +28,18 @@ the month's last day (31st → Apr 30, Feb 28/29), and the next renewal goes bac
 The same rule (`monthDayClamped`) now also fixes the Stripe webhook's next billing date, which used to spill a 31st
 into the next month (Feb 31 → Mar 3).
 
+**Schedules follow Stripe (no setup).** Each run first reads every Stripe subscription (read-only key, one paged
+call, the same read as the Money page) and keeps each client's schedule in step with it: the monthly price, the
+renewal day (the UTC day of Stripe's billing anchor, which is how Stripe itself bills), the start date, who sends the
+invoice (`charge_automatically` → Stripe autopay, `send_invoice` → Stripe emails the invoice), paused
+(`pause_collection`) and ended (the schedule is cancelled, history kept). A client's schedule follows its live
+subscription in the best state (active, then past due/unpaid, then trialing, then paused), newest first; canceled and
+never-completed (`incomplete`) subscriptions are ignored. A new schedule creates tasks from the day it appeared, so
+past renewals do not flood in. If Stripe cannot be read, the run fails visibly and the existing schedules still get
+their tasks. The owner can take a schedule over by hand (Billing tab, for a client who pays another way or to
+override Stripe); the job then leaves it alone until "Follow Stripe again". Pausing or cancelling a Stripe-managed
+schedule is done in Stripe.
+
 **One sender.** The schedule says who sends the renewal invoice: the owner from Luminate OS, Stripe (emailed
 invoice) or Stripe autopay. Only the first gets a Day −5 "send" task, and "Mark sent" is refused for the others, so
 a client is never asked to pay twice. "Mark sent" is recorded once per renewal; a second attempt is refused.
@@ -35,8 +47,9 @@ a client is never asked to pay twice. "Mark sent" is recorded once per renewal; 
 ## Data (migration 0009, additive)
 
 - `care_agreements`: the client's billing schedule (a subset of the doc 05 design): plan name, monthly price,
-  anniversary day, start date, status (active / paused / cancelled), invoice sender, optional payment link, and
-  `tasks_from` (the date the schedule was entered or resumed). At most one not-cancelled schedule per client.
+  anniversary day, start date, status (active / paused / cancelled), invoice sender, optional payment link,
+  `source` (`stripe`: kept in step by the job; `manual`: set by the owner), `stripe_subscription_id`, and
+  `tasks_from` (the date the schedule was created or resumed). At most one not-cancelled schedule per client.
 - `billing_cycles`: one per client per renewal date (unique). Amount, plan and sender are **copied** at creation, so
   later price or date changes never rewrite history. Holds payment state (`open` / `paid` / `paid_manual` /
   `cancelled`), the verified payment it was matched to, sent and reminder timestamps (and who), and manual payments.
@@ -54,6 +67,7 @@ idempotent, so the hourly pass is effectively a daily schedule: a milestone is c
 (soon after midnight there). A once-a-day window would line up with midnight UTC (evening in New York).
 
 Each run:
+0. brings Stripe-managed schedules in step with Stripe (above);
 1. creates the cycles due by today (Day −5 or later): renewals on or after the plan's start whose Day +7 is not
    before `tasks_from`, within 75 days back (so missed runs catch up);
 2. settles open cycles from **verified payments** (`revenue_events` with status paid, written only by the signed Stripe
@@ -80,15 +94,17 @@ On Today (Billing group) and in the client's Billing tab:
   payment the app did not match. It settles the renewal and closes its tasks. It is kept on the renewal and is
   **not** added to `revenue_events` (Stripe-derived records stay Stripe's; SOP 5.1 "no second ledger"), so it is not
   in the Money page's Collected figure.
-- Billing tab: **set up / edit** the schedule (prefilled from the client record, saved only when the owner confirms:
-  open decision D6), **pause** (cancels open tasks at once), **resume** (tasks restart from today), **cancel** (with a
-  tick; renewals not reached are cancelled, ones already due stay owed).
+- Billing tab: shows the schedule Stripe implies. **Manage by hand** (a form prefilled from the schedule or the
+  client record) takes it over; a hand-managed schedule can be **paused** (cancels open tasks at once), **resumed**
+  (tasks restart from today), **cancelled** (with a tick; renewals not reached are cancelled, ones already due stay
+  owed) or handed back with **Follow Stripe again**.
 
 ## Before it does anything (owner)
 
-1. Apply migration 0009 (staging first, then production with approval). Until then Today and the Billing tab say
-   billing tasks are unavailable, and the job fails visibly.
-2. Set up each paying client's billing schedule (Today lists paying clients without one). No schedule, no tasks.
+Apply migration 0009 (staging first, then production with approval). Until then Today and the Billing tab say billing
+tasks are unavailable, and the job fails visibly. Nothing else: within the hour the job creates each client's schedule
+from their Stripe subscription. Today lists paying clients for whom no live Stripe subscription was found (set those
+up by hand if they pay another way).
 
 ## Tests
 

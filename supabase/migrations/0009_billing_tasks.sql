@@ -16,6 +16,8 @@
 --   drop table public.billing_actions; drop table public.billing_cycles; drop table public.care_agreements;
 
 -- One care billing schedule per client (a subset of the care_agreements design in doc 05; later phases add to it).
+-- Normally kept in step with the client's Stripe subscription by the billing job (source 'stripe'); the owner can
+-- instead manage one by hand (source 'manual'), for a client who does not pay through a Stripe subscription.
 create table if not exists public.care_agreements (
   id uuid primary key default gen_random_uuid(),
   client_id uuid not null references public.clients (id) on delete restrict,
@@ -29,6 +31,8 @@ create table if not exists public.care_agreements (
   -- One sender only, so a client is never asked to pay twice.
   invoice_sender text not null default 'luminate',
   payment_link_url text,
+  source text not null default 'stripe',
+  stripe_subscription_id text,
   -- Billing tasks are created for renewals from this date on (set when the schedule is entered or resumed).
   tasks_from date not null default current_date,
   paused_at timestamptz,
@@ -41,7 +45,9 @@ create table if not exists public.care_agreements (
   constraint care_agreements_day_check check (anniversary_day between 1 and 31),
   constraint care_agreements_price_check check (monthly_price_cents >= 0 and monthly_price_cents <= 10000000),
   constraint care_agreements_link_check check (payment_link_url is null or (payment_link_url ~ '^https://' and char_length(payment_link_url) <= 500)),
-  constraint care_agreements_plan_length check (plan_name is null or char_length(plan_name) <= 80)
+  constraint care_agreements_plan_length check (plan_name is null or char_length(plan_name) <= 80),
+  constraint care_agreements_source_check check (source in ('stripe', 'manual')),
+  constraint care_agreements_subscription_check check (stripe_subscription_id is null or stripe_subscription_id ~ '^sub_[A-Za-z0-9]{1,200}$')
 );
 -- At most one schedule that is not cancelled per client. Cancelled ones stay as history.
 create unique index if not exists care_agreements_one_open_per_client on public.care_agreements (client_id) where status <> 'cancelled';
@@ -144,8 +150,8 @@ revoke all on table public.billing_actions from public, anon, authenticated, ser
 grant select, insert, update on table public.care_agreements to authenticated;
 grant select, insert, update on table public.billing_cycles to authenticated;
 grant select, insert, update on table public.billing_actions to authenticated;
--- The billing job (server) reads schedules and writes cycles and actions; it never edits a schedule.
-grant select on table public.care_agreements to service_role;
+-- The billing job (server) keeps Stripe-managed schedules in step with Stripe, and writes cycles and actions.
+grant select, insert, update on table public.care_agreements to service_role;
 grant select, insert, update on table public.billing_cycles to service_role;
 grant select, insert, update on table public.billing_actions to service_role;
 
@@ -153,5 +159,5 @@ grant select, insert, update on table public.billing_actions to service_role;
 -- milestone is still created once per renewal (the unique keys above).
 insert into public.jobs (key, name, description, interval_minutes)
 values ('billing_tasks', 'Billing tasks',
-        'Creates the SOP billing tasks for each care renewal (Day -5 send invoice, Day 0 verify payment, Day +3 friendly reminder, Day +7 grace-period review), closes them when a verified payment arrives, and cancels them when a plan is paused or cancelled. Never sends anything.', 60)
+        'Follows each client''s Stripe subscription renewals and creates the SOP billing tasks for each renewal (Day -5 send invoice, Day 0 verify payment, Day +3 friendly reminder, Day +7 grace-period review), closes them when a verified payment arrives, and cancels them when a plan is paused or cancelled. Never sends anything.', 60)
 on conflict (key) do nothing;

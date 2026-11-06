@@ -6,7 +6,13 @@ import { ActionForm } from "@/ui/ActionForm";
 import { BTN_PRIMARY, BTN_SMALL, INPUT, Stack } from "@/ui/forms";
 import { EmptyNote, Group, ListRow, SectionHead, type KitTone } from "@/ui/kit";
 import { BillingTaskRow } from "./BillingTasks";
-import { saveScheduleAction, scheduleStatusAction } from "./actions";
+import { followStripeAction, saveScheduleAction, scheduleStatusAction } from "./actions";
+
+const SENDER_SHORT: Record<InvoiceSender, string> = {
+  luminate: "you send the invoice",
+  stripe_invoice: "Stripe emails the invoice",
+  stripe_autopay: "Stripe autopay",
+};
 
 const SENDER_LABEL: Record<InvoiceSender, string> = {
   luminate: "You, from Luminate OS (a Day -5 task reminds you)",
@@ -33,53 +39,78 @@ export function BillingSchedule({ clientId, billing, archived }: { clientId: str
   }
   const a = billing.agreement;
   const s = billing.suggestion;
-  const state = !a ? "Not set up: no billing tasks are created for this client." : a.status === "paused" ? "Paused: no billing tasks are created." : `Active. Next renewal ${billing.nextRenewal ? shortDay(billing.nextRenewal) : "unknown"}.`;
+  const followsStripe = a?.source === "stripe";
+  const renews = a ? `renews on day ${a.anniversaryDay}${a.anniversaryDay > 28 ? " (the last day in shorter months)" : ""}` : "";
+  const state = !a
+    ? billing.hasStripeCustomer
+      ? "No live Stripe subscription found for this client, so there are no billing tasks. The billing job checks Stripe every hour; a new subscription is picked up by itself."
+      : "This client has no Stripe customer, so there are no billing tasks. If they pay another way, set up a schedule by hand below."
+    : followsStripe
+      ? `Follows the Stripe subscription: ${formatCents(a.monthlyPriceCents)} a month, ${renews}, ${SENDER_SHORT[a.invoiceSender]}${a.status === "paused" ? ", paused in Stripe" : `, next renewal ${billing.nextRenewal ? shortDay(billing.nextRenewal) : "unknown"}`}. Changes made in Stripe (price, pause, cancel) apply here within the hour.`
+      : `Managed by hand: ${formatCents(a.monthlyPriceCents)} a month, ${renews}, ${SENDER_SHORT[a.invoiceSender]}${a.status === "paused" ? ", paused" : `, next renewal ${billing.nextRenewal ? shortDay(billing.nextRenewal) : "unknown"}`}.`;
+
+  const form = (
+    <ActionForm action={saveScheduleAction} submitLabel={a && !followsStripe ? "Save schedule" : "Save and manage by hand"} className="flex flex-col gap-3" buttonClassName={BTN_PRIMARY}>
+      <input type="hidden" name="clientId" value={clientId} />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Stack label="Plan">
+          <input name="planName" defaultValue={a?.planName ?? s.planName ?? ""} placeholder="Essential" maxLength={80} className={INPUT} autoComplete="off" />
+        </Stack>
+        <Stack label="Monthly price ($)">
+          <input name="monthlyPrice" inputMode="decimal" required defaultValue={((a?.monthlyPriceCents ?? s.monthlyPriceCents) / 100 || "").toString()} className={INPUT} autoComplete="off" />
+        </Stack>
+        <Stack label="Renews on day (1-31; short months use the last day)">
+          <input name="anniversaryDay" type="number" min={1} max={31} required defaultValue={a?.anniversaryDay ?? s.anniversaryDay ?? ""} className={INPUT} />
+        </Stack>
+        <Stack label="Plan started">
+          <input name="startsOn" type="date" required defaultValue={a?.startsOn ?? s.startsOn ?? ""} className={INPUT} />
+        </Stack>
+      </div>
+      <Stack label="Who sends the renewal invoice (one sender only)">
+        <select name="invoiceSender" defaultValue={a?.invoiceSender ?? "luminate"} className={INPUT}>
+          {(Object.keys(SENDER_LABEL) as InvoiceSender[]).map((k) => (
+            <option key={k} value={k}>
+              {SENDER_LABEL[k]}
+            </option>
+          ))}
+        </select>
+      </Stack>
+      <Stack label="Payment link (optional, https; opened by “Open invoice/payment link”)">
+        <input name="paymentLinkUrl" type="url" defaultValue={a?.paymentLinkUrl ?? ""} placeholder="https://buy.stripe.com/..." maxLength={500} className={INPUT} autoComplete="off" />
+      </Stack>
+      <p className="m-0 text-[12px] text-dim">
+        {followsStripe || !a ? "Saving takes this schedule over by hand: the billing job then stops changing it from Stripe. " : ""}Changes apply from the next renewal created. Renewals already created keep their amount and date.
+      </p>
+    </ActionForm>
+  );
+
   return (
     <div className="flex flex-col gap-4">
       <section className="flex min-w-0 flex-col gap-3 rounded-[14px] border border-line bg-surface px-4 py-3.5">
         <div>
           <h3 className="m-0 text-[14px] font-semibold">Billing schedule</h3>
-          <p className="m-0 mt-1 text-[13px] leading-normal text-dim">
-            {state} Tasks follow the SOP: Day -5 send the renewal invoice, Day 0 verify payment, Day +3 friendly reminder, Day +7 review the grace period (no suspension). Nothing is sent automatically.
+          <p className="m-0 mt-1 text-[13px] leading-normal text-dim">{state}</p>
+          <p className="m-0 mt-1 text-[12px] leading-normal text-dim">
+            Tasks follow the SOP: Day -5 send the renewal invoice (only when you send it), Day 0 verify payment, Day +3 friendly reminder, Day +7 review the grace period (no suspension). Nothing is sent automatically.
           </p>
         </div>
         {archived ? (
           <p className="m-0 text-[13px] text-dim">This client is archived. Restore the client to set up billing.</p>
+        ) : a && !followsStripe ? (
+          form
         ) : (
-          <ActionForm action={saveScheduleAction} submitLabel={a ? "Save schedule" : "Set up billing schedule"} className="flex flex-col gap-3" buttonClassName={BTN_PRIMARY}>
-            <input type="hidden" name="clientId" value={clientId} />
-            {!a && <p className="m-0 text-[12px] text-dim">Filled in from the client record where known. Check each value: they are not applied until you save.</p>}
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Stack label="Plan">
-                <input name="planName" defaultValue={a?.planName ?? s.planName ?? ""} placeholder="Essential" maxLength={80} className={INPUT} autoComplete="off" />
-              </Stack>
-              <Stack label="Monthly price ($)">
-                <input name="monthlyPrice" inputMode="decimal" required defaultValue={((a?.monthlyPriceCents ?? s.monthlyPriceCents) / 100 || "").toString()} className={INPUT} autoComplete="off" />
-              </Stack>
-              <Stack label="Renews on day (1-31; short months use the last day)">
-                <input name="anniversaryDay" type="number" min={1} max={31} required defaultValue={a?.anniversaryDay ?? s.anniversaryDay ?? ""} className={INPUT} />
-              </Stack>
-              <Stack label="Plan started">
-                <input name="startsOn" type="date" required defaultValue={a?.startsOn ?? s.startsOn ?? ""} className={INPUT} />
-              </Stack>
-            </div>
-            <Stack label="Who sends the renewal invoice (one sender only)">
-              <select name="invoiceSender" defaultValue={a?.invoiceSender ?? "luminate"} className={INPUT}>
-                {(Object.keys(SENDER_LABEL) as InvoiceSender[]).map((k) => (
-                  <option key={k} value={k}>
-                    {SENDER_LABEL[k]}
-                  </option>
-                ))}
-              </select>
-            </Stack>
-            <Stack label="Payment link (optional, https; opened by “Open invoice/payment link”)">
-              <input name="paymentLinkUrl" type="url" defaultValue={a?.paymentLinkUrl ?? ""} placeholder="https://buy.stripe.com/..." maxLength={500} className={INPUT} autoComplete="off" />
-            </Stack>
-            {a && <p className="m-0 text-[12px] text-dim">Changes apply from the next renewal created. Renewals already created keep their amount and date.</p>}
-          </ActionForm>
+          <details>
+            <summary className={`${BTN_SMALL} inline-flex cursor-pointer list-none items-center`}>{a ? "Manage by hand instead…" : "Set up by hand…"}</summary>
+            <div className="mt-3">{form}</div>
+          </details>
         )}
-        {a && (
+        {a && !followsStripe && (
           <div className="flex flex-wrap items-start gap-2 border-t border-line pt-3">
+            {billing.hasStripeCustomer && (
+              <ActionForm action={followStripeAction} submitLabel="Follow Stripe again" buttonClassName={BTN_SMALL}>
+                <input type="hidden" name="clientId" value={clientId} />
+              </ActionForm>
+            )}
             <ActionForm action={scheduleStatusAction} submitLabel={a.status === "paused" ? "Resume billing" : "Pause billing"} buttonClassName={BTN_SMALL}>
               <input type="hidden" name="clientId" value={clientId} />
               <input type="hidden" name="change" value={a.status === "paused" ? "resume" : "pause"} />

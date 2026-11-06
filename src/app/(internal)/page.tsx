@@ -155,7 +155,7 @@ export default async function TodayPage() {
             </Group>
             {billing.missingSchedules.length > 0 && (
               <p className="mx-0.5 mt-2 text-[12px] leading-[1.5] text-dim">
-                No billing schedule yet, so no billing tasks for:{" "}
+                No live Stripe subscription found (and no schedule set up by hand), so no billing tasks for:{" "}
                 {billing.missingSchedules.map((c, i) => (
                   <span key={c.clientId}>
                     {i > 0 && ", "}

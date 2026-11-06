@@ -17,14 +17,16 @@ export class RepoError extends Error {
 
 const isUnique = (error: { code?: string } | null) => error?.code === "23505";
 
-const AGREEMENT_COLUMNS = "id,client_id,plan_name,monthly_price_cents,anniversary_day,starts_on,status,invoice_sender,payment_link_url,tasks_from";
+const AGREEMENT_COLUMNS = "id,client_id,plan_name,monthly_price_cents,anniversary_day,starts_on,status,invoice_sender,payment_link_url,tasks_from,source,stripe_subscription_id";
 const CYCLE_COLUMNS =
   "id,agreement_id,client_id,due_on,amount_cents,plan_name,invoice_sender,status,paid_at,payment_ref,invoice_sent_at,reminder_sent_at,invoice_url,manual_amount_cents,manual_method,manual_note";
 
 type AgreementRow = Database["public"]["Tables"]["care_agreements"]["Row"];
 type CycleRow = Database["public"]["Tables"]["billing_cycles"]["Row"];
 
-export function toAgreement(r: Pick<AgreementRow, "id" | "client_id" | "plan_name" | "monthly_price_cents" | "anniversary_day" | "starts_on" | "status" | "invoice_sender" | "payment_link_url" | "tasks_from">): Agreement {
+export function toAgreement(
+  r: Pick<AgreementRow, "id" | "client_id" | "plan_name" | "monthly_price_cents" | "anniversary_day" | "starts_on" | "status" | "invoice_sender" | "payment_link_url" | "tasks_from" | "source" | "stripe_subscription_id">,
+): Agreement {
   return {
     id: r.id,
     clientId: r.client_id,
@@ -36,6 +38,8 @@ export function toAgreement(r: Pick<AgreementRow, "id" | "client_id" | "plan_nam
     invoiceSender: r.invoice_sender as InvoiceSender,
     paymentLinkUrl: r.payment_link_url,
     tasksFrom: r.tasks_from,
+    source: r.source === "manual" ? "manual" : "stripe",
+    stripeSubscriptionId: r.stripe_subscription_id,
   };
 }
 
@@ -228,7 +232,7 @@ export async function jobState(db: Db): Promise<{ exists: boolean; enabled: bool
 
 // --- writes ---------------------------------------------------------------------------------------------------------
 
-export async function insertAgreement(db: Db, a: Omit<Agreement, "id" | "status"> & { updatedBy: string | null }): Promise<string | "conflict"> {
+export async function insertAgreement(db: Db, a: Omit<Agreement, "id"> & { updatedBy: string | null }): Promise<string | "conflict"> {
   const { data, error } = await db
     .from("care_agreements")
     .insert({
@@ -240,6 +244,10 @@ export async function insertAgreement(db: Db, a: Omit<Agreement, "id" | "status"
       invoice_sender: a.invoiceSender,
       payment_link_url: a.paymentLinkUrl,
       tasks_from: a.tasksFrom,
+      status: a.status,
+      source: a.source,
+      stripe_subscription_id: a.stripeSubscriptionId,
+      ...(a.status === "paused" ? { paused_at: new Date().toISOString() } : {}),
       updated_by: a.updatedBy,
     })
     .select("id")
