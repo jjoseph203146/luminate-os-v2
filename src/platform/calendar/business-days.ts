@@ -46,6 +46,23 @@ export function addCalendarDays(isoDate: string, days: number): string {
   return formatIsoDate(d);
 }
 
+/** Days in a month (month 1-12). */
+export function daysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+/**
+ * The date for `day` of a month, moved to the month's last day when the month is shorter (the 31st in April is
+ * April 30; the 29th-31st in February is Feb 28, or 29 in a leap year). Doc 06 s4. Month is 1-12; it may run past
+ * 12 or below 1 and rolls into the next or previous year.
+ */
+export function monthDayClamped(year: number, month: number, day: number): string {
+  const first = new Date(Date.UTC(year, month - 1, 1));
+  const y = first.getUTCFullYear();
+  const m = first.getUTCMonth() + 1;
+  return formatIsoDate(new Date(Date.UTC(y, m - 1, Math.min(day, daysInMonth(y, m)))));
+}
+
 export function isValidTimeZone(timeZone: string): boolean {
   if (!timeZone || timeZone.length > 64) return false;
   try {

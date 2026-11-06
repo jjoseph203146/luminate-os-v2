@@ -65,6 +65,10 @@ describe("buildAttention", () => {
     );
     expect(out.map((i) => i.key).sort()).toEqual(["task-a", "task-b"]);
   });
+  it("leaves billing tasks to the Billing group (no second 'Task overdue' item)", () => {
+    const items = buildAttention({ ...empty, tasks: [task({ client_id: "c1", priority: "urgent", source_reference: "billing:c1:2026-11-01:grace_review" })] }, today, now, tz);
+    expect(items.filter((i) => i.kind === "task")).toEqual([]);
+  });
   it("ignores failed payments older than 30 days", () => {
     const out = buildAttention({ ...empty, payments: [{ id: "p", client_id: "c1", amount: 1, status: "failed", paid_at: null, created_at: "2026-09-01T00:00:00Z" }] }, today, now, tz);
     expect(out).toHaveLength(0);

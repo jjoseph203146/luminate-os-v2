@@ -1,4 +1,5 @@
 import { runActivityAlerts } from "@/domains/alerts/service";
+import { runBillingTasks } from "@/domains/renewals/service";
 import { runMonitorAlerts, runSiteChecks, runVisualChecks } from "@/domains/monitoring/service";
 import type { JobHandler } from "./runner";
 
@@ -14,4 +15,6 @@ export const handlers: Record<string, JobHandler> = {
   monitor_alerts: async ({ now }) => ({ ...(await runMonitorAlerts({ type: "system", name: "monitor_alerts" }, now)) }),
   // Tells the owner about payments and client requests and comments that the old app recorded.
   activity_alerts: async ({ now }) => ({ ...(await runActivityAlerts({ type: "system", name: "activity_alerts" }, now)) }),
+  // SOP billing tasks: creates the Day -5/0/+3/+7 tasks for each renewal and closes them when paid. Never sends anything.
+  billing_tasks: async ({ now }) => ({ ...(await runBillingTasks({ type: "system", name: "billing_tasks" }, now)) }),
 };

@@ -18,7 +18,7 @@ These are the questions only the owner can answer. Each has a recommendation. Th
 |---|---|---|
 | D4 | **Lead stage mapping** for the 10 existing leads: `interested` → ?, `contacted` → ?, `quoted` → ? | interested → New Lead; contacted → In Discussion; quoted → Proposal Sent |
 | D5 | **Business calendar:** Monday–Friday, Eastern time? Which holidays count as non-business days? | Mon–Fri, America/New_York; US federal holidays you actually take off |
-| D6 | **Existing clients' care terms:** for each active client, their tier (Essential / Professional / Growth), actual monthly price (grandfathered?), and anniversary day | I prepare a pre-filled list from Stripe for you to confirm |
+| D6 | **Existing clients' care terms:** (2026-11-06, owner: billing follows each client's Stripe subscription; a schedule can be managed by hand in the Billing tab; doc 17) for each active client, their tier (Essential / Professional / Growth), actual monthly price (grandfathered?), and anniversary day | I prepare a pre-filled list from Stripe for you to confirm |
 | D7 | **Follow-up reminders:** tasks in Luminate OS only, or also Google Calendar events? (SOP2 §6 mentions your calendar) | OS tasks only for M1; calendar sync later |
 | D8 | **E-signature provider** for agreements (SOP6 2.2). Which one do you use, if any? | For M1, upload the signed PDF plus its audit certificate; integrate the provider later |
 | D9 | **Which system issues project invoices** (deposit and final): Stripe or Zoho? | Stripe invoices (Zoho imports them), so payment status is verifiable |
@@ -31,7 +31,7 @@ These are the questions only the owner can answer. Each has a recommendation. Th
 | # | Question | Recommendation |
 |---|---|---|
 | D13 | **Welcome email:** does SOP3 §2 count as a standing approval to send it automatically once signed + deposit paid? | Yes, for that one template only |
-| D14 | **Stripe-sent renewal invoices and reminders:** standing approval? | Yes (Stripe sends them; the OS only tracks) |
+| D14 | **Stripe-sent renewal invoices and reminders:** standing approval? (2026-11-06, owner brief: Luminate OS never sends; per client either the owner sends or Stripe does, one sender only; doc 17) | Yes (Stripe sends them; the OS only tracks) |
 | D15 | Quarterly check-ins: every 3rd care month from each client's start, or fixed calendar quarters? | Every 3rd care month per client |
 | D16 | Notification channels: push + in-app + daily digest email? | Push for urgent, in-app for all, digest email optional |
 | D17 | Old monthly report job: stop it when P4 report drafting goes live? | Yes |

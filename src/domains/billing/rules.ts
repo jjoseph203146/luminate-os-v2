@@ -1,5 +1,6 @@
 // Pure rules for the Stripe webhook. No database, no network, no clock reads: `now` is passed in.
 // Ported from the old app's src/app/api/webhooks/stripe/route.ts; the comments that explain past bugs are kept.
+import { monthDayClamped } from "@/platform/calendar/business-days";
 
 /** The event types the webhook acts on. Every other type is acknowledged and ignored. */
 export const HANDLED_EVENT_TYPES = [
@@ -41,20 +42,14 @@ export function isUniqueViolation(error: { code?: string } | null | undefined): 
  * around month boundaries in non-UTC time zones.
  */
 export function nextBillingDate(anchorTimestamp: number, now: Date): string {
-  const anchor = new Date(anchorTimestamp * 1000);
-  const billingDay = anchor.getUTCDate();
-  let year = now.getUTCFullYear();
-  let month = now.getUTCMonth();
-  let candidate = new Date(Date.UTC(year, month, billingDay));
-  if (candidate <= now) {
-    month++;
-    if (month > 11) {
-      month = 0;
-      year++;
-    }
-    candidate = new Date(Date.UTC(year, month, billingDay));
-  }
-  return candidate.toISOString().split("T")[0] as string;
+  const billingDay = new Date(anchorTimestamp * 1000).getUTCDate();
+  const year = now.getUTCFullYear();
+  const month = now.getUTCMonth() + 1;
+  // In a shorter month the date moves to the month's last day (the 31st was once pushed into the next month:
+  // Feb 31 became Mar 3).
+  const candidate = monthDayClamped(year, month, billingDay);
+  if (new Date(`${candidate}T00:00:00Z`) > now) return candidate;
+  return monthDayClamped(year, month + 1, billingDay);
 }
 
 type Ref = string | { id?: unknown } | null | undefined;

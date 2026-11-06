@@ -33,7 +33,11 @@ export interface TaskRow {
   priority: string;
   due_date: string | null;
   updated_at: string;
+  /** "billing:..." for SOP billing tasks, which Today shows in their own Billing group. */
+  source_reference?: string | null;
 }
+
+export const isBillingTask = (t: Pick<TaskRow, "source_reference">) => (t.source_reference ?? "").startsWith("billing:");
 export interface ProjectRow {
   id: string;
   client_id: string | null;
@@ -123,7 +127,7 @@ export function buildAttention(input: AttentionInput, today: string, now: Date, 
   }
 
   for (const t of input.tasks) {
-    if (t.status === "completed" || !t.client_id) continue;
+    if (t.status === "completed" || !t.client_id || isBillingTask(t)) continue;
     const overdue = t.due_date !== null && t.due_date < today;
     const dueToday = t.due_date === today;
     let severity: 1 | 2 | 3 | 4 | null = null;

@@ -21,6 +21,8 @@ const sub = (over: Partial<MoneySubscription> = {}): MoneySubscription => ({
   paused: false,
   pauseResumesAt: null,
   currentPeriodPaid: true,
+  billingCycleAnchor: null,
+  startDate: null,
   ...over,
 });
 const inv = (over: Partial<MoneyInvoice> = {}): MoneyInvoice => ({

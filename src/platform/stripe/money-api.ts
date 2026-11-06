@@ -28,6 +28,10 @@ export interface MoneySubscription {
   pauseResumesAt: number | null;
   /** The subscription's latest invoice (the current period's) is paid with money. */
   currentPeriodPaid: boolean;
+  /** Stripe's billing anchor (unix seconds): its day of the month is the renewal day. */
+  billingCycleAnchor: number | null;
+  /** When the subscription started (unix seconds). */
+  startDate: number | null;
 }
 
 export interface MoneyInvoice {
@@ -91,6 +95,8 @@ export function createStripeMoneyReads(stripe: Stripe): StripeMoneyReads {
             paused: s.status === "paused" || Boolean(s.pause_collection),
             pauseResumesAt: s.pause_collection?.resumes_at ?? null,
             currentPeriodPaid: latest?.status === "paid" && (latest.amount_paid ?? 0) > 0,
+            billingCycleAnchor: s.billing_cycle_anchor ?? null,
+            startDate: s.start_date ?? null,
           },
         ];
       });

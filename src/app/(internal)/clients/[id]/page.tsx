@@ -13,6 +13,8 @@ import { ActionForm } from "@/ui/ActionForm";
 import { BTN_SMALL } from "@/ui/forms";
 import { resendInvoiceAction } from "./actions";
 import { ManageTab, WebsitesEditor } from "./manage";
+import { getClientBilling } from "@/domains/renewals/service";
+import { BillingSchedule } from "../../_billing/BillingSchedule";
 import { AddRequestLink, ClientRequestTile } from "@/ui/shell/QuickAddButtons";
 
 export const metadata = { title: "Client" };
@@ -154,6 +156,8 @@ export default async function ClientWorkspacePage({ params, searchParams }: { pa
   const tab: Tab = (TABS as readonly string[]).includes(rawTab ?? "") ? (rawTab as Tab) : "overview";
   const ws = await getClientWorkspace(actor, id);
   if (!ws) notFound();
+  // Billing schedule and tasks are read only when the Billing tab is open.
+  const billing = tab === "billing" ? await getClientBilling(actor, id) : null;
 
   const now = new Date();
   const { client, monitor } = ws;
@@ -334,6 +338,7 @@ export default async function ClientWorkspacePage({ params, searchParams }: { pa
 
         {tab === "billing" && (
           <>
+            {billing && <BillingSchedule clientId={ws.client.id} billing={billing} archived={ws.client.archivedAt !== null} />}
             <Banner tone="amber" icon="help">
               Payments are recorded from Stripe as they happen. If one is missing, run Sync from Stripe in Settings → Stripe.
             </Banner>
