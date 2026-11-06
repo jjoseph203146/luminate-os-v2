@@ -20,10 +20,11 @@ bot trap fields, field validation, a 10-minute duplicate check. Stores the lead 
 status "interested", and pushes a notification.
 
 ## Site monitoring
-The checks still run in the old app (`site_monitors`, `site_issues`). v2 reads them (Monitoring screen) and runs the
-`monitor_alerts` job every 5 minutes on the existing tick. `alert_state` remembers what was announced.
-One owner per scheduled job (CLAUDE.md): the old app keeps the checks; v2 owns the alerts. Until the old app's own push
-subscription is removed, both apps may alert about the same outage.
+v2 now runs the checks itself: the `site_checks` job (every 10 minutes, migration `0006`) records the result in
+`site_monitors` and `site_monitor_checks`, the same tables the old app wrote (see `13-site-monitoring.md`). The Monitoring
+screen reads them, and the `monitor_alerts` job runs every 5 minutes on the existing tick. `alert_state` remembers what was announced.
+One owner per scheduled job (CLAUDE.md): enable `site_checks` in the same step that stops the old scanner. `site_issues`
+(Sentry) is still filled by the old app. Until the old app's own pushes are muted (`OLD_PUSH_MUTE`), both apps may alert about the same outage.
 
 ## Payment and client activity alerts (added 2026-11-06)
 The `activity_alerts` job (migration `0005`, every 5 minutes on the existing tick) pushes a notification once for each:

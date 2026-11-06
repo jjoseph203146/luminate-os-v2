@@ -7,7 +7,7 @@ import type { AlertStateRow, SiteMonitor, SiteStatus } from "./types";
 const MINUTE = 60_000;
 const DAY = 86_400_000;
 
-/** A check older than this means the checker itself has stopped (it runs about every 15 minutes). */
+/** A check older than this means the checker itself has stopped (v2 scans every 10 minutes). */
 export const STALE_AFTER_MINUTES = 60;
 /** Alert when this many days remain, or fewer. Each threshold fires once. */
 export const EXPIRY_THRESHOLDS = [14, 7, 3, 1] as const;

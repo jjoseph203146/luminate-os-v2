@@ -17,6 +17,7 @@ export const PERMISSIONS = [
   "notifications.manage",
   "notifications.send",
   "monitoring.read",
+  "monitoring.scan",
   "alerts.run",
   "assistant.read",
   "calendar.read",
@@ -28,7 +29,7 @@ export type Permission = (typeof PERMISSIONS)[number];
 // actors are designed but switched off (docs/architecture/04 s3).
 const GRANTS: Record<ActorType, readonly Permission[]> = {
   owner: PERMISSIONS,
-  system: ["jobs.read", "jobs.run", "growth.intake", "notifications.send", "monitoring.read", "alerts.run"],
+  system: ["jobs.read", "jobs.run", "growth.intake", "notifications.send", "monitoring.read", "monitoring.scan", "alerts.run"],
   contractor: [],
   client: [],
   integration: [],
