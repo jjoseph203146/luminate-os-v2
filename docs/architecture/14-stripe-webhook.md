@@ -87,3 +87,17 @@ Only one system may receive Stripe events at a time, so the move is a single edi
    (`select id, type, status, attempts, error from integration_events order by received_at desc limit 20;`).
 4. Rollback: edit the URL back. Events Stripe could not deliver are retried for up to 3 days, and the ledger makes
    a retried event safe to apply once.
+
+## Resend invoice (owner button)
+
+On a client's page, each payment that came from a Stripe invoice has a **Resend invoice** button. It asks Stripe to
+email that invoice to the client again (`invoices.sendInvoice`); nothing about the invoice itself changes.
+
+- **Key:** a separate restricted key in `STRIPE_INVOICE_KEY` with **Invoices: Write** only. `STRIPE_SECRET_KEY`
+  stays read-only for the webhook, so a leak of either key is contained.
+- **Checks before sending:** owner only; the invoice must be recorded for that client, and Stripe's invoice must
+  belong to that client's Stripe customer; drafts, void and uncollectible invoices are refused; at most 5 sends a
+  minute per owner. Every send writes an `invoice.resent` audit row.
+- **When Stripe refuses** (for example some automatically charged subscription invoices cannot be emailed by
+  hand), the button shows Stripe's reason and the invoice's payment page link to send yourself.
+- Not tested against live Stripe: try it first on an invoice you are happy to re-send.

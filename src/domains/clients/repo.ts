@@ -111,7 +111,7 @@ export async function getClientWorkspace(db: Db, id: string, now: Date): Promise
       .limit(30),
     db
       .from("revenue_events")
-      .select("id,amount,status,event_type,paid_at,created_at")
+      .select("id,amount,status,event_type,paid_at,created_at,stripe_invoice_id")
       .eq("client_id", id)
       .order("created_at", { ascending: false })
       .limit(12),
@@ -181,6 +181,7 @@ export async function getClientWorkspace(db: Db, id: string, now: Date): Promise
     openRequests: requestRows.filter((r) => r.status !== "completed").length,
     payments: must("read payments", payments).map((p) => ({
       id: p.id,
+      invoiceId: p.stripe_invoice_id?.startsWith("in_") ? p.stripe_invoice_id : null,
       amount: p.amount,
       status: p.status,
       eventType: p.event_type,

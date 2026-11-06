@@ -197,3 +197,14 @@ export function createBillingRepo(db: Db): BillingRepo {
     },
   };
 }
+
+/** The client's Stripe customer id, when this invoice is recorded for this client; null when it is not theirs. */
+export async function findClientInvoice(db: Db, clientId: string, invoiceId: string): Promise<{ stripeCustomerId: string | null } | null> {
+  const { data: rev, error } = await db.from("revenue_events").select("id").eq("client_id", clientId).eq("stripe_invoice_id", invoiceId).limit(1);
+  if (error) throw new RepoError("read the invoice");
+  if (!rev || rev.length === 0) return null;
+  const { data: client, error: e2 } = await db.from("clients").select("stripe_customer_id").eq("id", clientId).maybeSingle();
+  if (e2) throw new RepoError("read the client");
+  if (!client) return null;
+  return { stripeCustomerId: client.stripe_customer_id };
+}

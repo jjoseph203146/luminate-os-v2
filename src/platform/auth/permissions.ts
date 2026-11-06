@@ -22,6 +22,7 @@ export const PERMISSIONS = [
   "assistant.read",
   "calendar.read",
   "billing.ingest",
+  "billing.invoice_send",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];

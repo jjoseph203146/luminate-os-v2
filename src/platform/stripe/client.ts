@@ -4,12 +4,15 @@ import Stripe from "stripe";
 
 export const STRIPE_API_VERSION = "2026-05-27.dahlia" as const;
 
-let cached: { key: string; client: Stripe } | null = null;
+const cache = new Map<string, Stripe>();
 
+/** One client per key: the webhook's read-only key and the invoice-sending key are used side by side. */
 export function getStripe(secretKey: string): Stripe {
   if (typeof window !== "undefined") throw new Error("Stripe client is server-only");
-  if (!cached || cached.key !== secretKey) {
-    cached = { key: secretKey, client: new Stripe(secretKey, { apiVersion: STRIPE_API_VERSION }) };
+  let client = cache.get(secretKey);
+  if (!client) {
+    client = new Stripe(secretKey, { apiVersion: STRIPE_API_VERSION });
+    cache.set(secretKey, client);
   }
-  return cached.client;
+  return client;
 }

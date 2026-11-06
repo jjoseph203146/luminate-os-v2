@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { envChecks, EnvError, getAppSettings, getCronSecret, getMcpKey, getPublicEnv, getStripeConfig, getPagespeedKey } from "./env";
+import { envChecks, EnvError, getAppSettings, getCronSecret, getMcpKey, getPublicEnv, getStripeConfig, getPagespeedKey, getStripeInvoiceKey } from "./env";
 
 const good = {
   NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
@@ -76,5 +76,14 @@ describe("getPagespeedKey", () => {
     expect(getPagespeedKey({} as unknown as NodeJS.ProcessEnv)).toBeNull();
     expect(getPagespeedKey({ PAGESPEED_API_KEY: "short" } as unknown as NodeJS.ProcessEnv)).toBeNull();
     expect(getPagespeedKey({ PAGESPEED_API_KEY: ` ${"A".repeat(39)} ` } as unknown as NodeJS.ProcessEnv)).toBe("A".repeat(39));
+  });
+});
+
+describe("getStripeInvoiceKey", () => {
+  it("accepts a secret or restricted key and is null otherwise", () => {
+    expect(getStripeInvoiceKey({} as unknown as NodeJS.ProcessEnv)).toBeNull();
+    expect(getStripeInvoiceKey({ STRIPE_INVOICE_KEY: "pk_live_publishable1234567890" } as unknown as NodeJS.ProcessEnv)).toBeNull();
+    const rk = `rk_live_${"q".repeat(24)}`;
+    expect(getStripeInvoiceKey({ STRIPE_INVOICE_KEY: ` ${rk} ` } as unknown as NodeJS.ProcessEnv)).toBe(rk);
   });
 });
