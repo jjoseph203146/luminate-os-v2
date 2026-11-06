@@ -2,7 +2,7 @@
 // No database, no clock: `now` is always passed in.
 import { clip } from "@/domains/notifications/rules";
 import type { PushPayload } from "@/platform/push/send";
-import type { AlertStateRow, SiteMonitor, SiteStatus } from "./types";
+import type { AlertStateRow, ScanOutcome, SiteMonitor, SiteStatus } from "./types";
 
 const MINUTE = 60_000;
 const DAY = 86_400_000;
@@ -151,4 +151,23 @@ export function planAlerts(sites: SiteMonitor[], previous: AlertStateRow[], now:
   }
 
   return out;
+}
+
+/**
+ * The sentence shown after "Scan now". One site: "Acme Bakery is up (412 ms)." Several: "Scanned 10 sites: 8 up,
+ * 1 slow, 1 down." Sites left for the next run (out of time) and failures are said plainly, never hidden.
+ */
+export function scanMessage(outcomes: ScanOutcome[], skippedForTime = 0): string {
+  const n = outcomes.length;
+  if (n === 0) return skippedForTime > 0 ? "No site could be scanned in time. Try again." : "There are no sites to scan.";
+  const only = outcomes[0];
+  if (n === 1 && skippedForTime === 0 && only) {
+    if (only.status === "failed") return `${only.clientName}: the scan could not be saved. Try again.`;
+    const speed = only.responseTimeMs === null ? "" : ` (${only.responseTimeMs} ms)`;
+    return `${only.clientName} is ${only.status}${speed}.`;
+  }
+  const count = (s: ScanOutcome["status"]) => outcomes.filter((o) => o.status === s).length;
+  const parts = [`${count("up")} up`, ...(count("slow") > 0 ? [`${count("slow")} slow`] : []), ...(count("down") > 0 ? [`${count("down")} down`] : []), ...(count("failed") > 0 ? [`${count("failed")} could not be scanned`] : [])];
+  const rest = skippedForTime > 0 ? ` ${skippedForTime} will be scanned on the next run.` : "";
+  return `Scanned ${n} site${n === 1 ? "" : "s"}: ${parts.join(", ")}.${rest}`;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { daysLeft, expiryBucket, hostOf, isStale, planAlerts } from "./rules";
-import type { SiteMonitor } from "./types";
+import { daysLeft, expiryBucket, hostOf, isStale, planAlerts, scanMessage } from "./rules";
+import type { ScanOutcome, SiteMonitor } from "./types";
 
 const NOW = new Date("2026-11-05T12:00:00Z");
 const minsAgo = (m: number) => new Date(NOW.getTime() - m * 60_000).toISOString();
@@ -140,5 +140,26 @@ describe("planAlerts: muted sites (archived, on hold, monitoring stopped)", () =
   });
   it("a site that was down and is then muted stays quiet", () => {
     expect(planAlerts([muted({ status: "up" })], [{ key: "site:m1:status", state: "down" }], NOW)).toEqual([]);
+  });
+});
+
+describe("scanMessage", () => {
+  const o = (over: Partial<ScanOutcome> = {}): ScanOutcome => ({ clientId: "c1", clientName: "Acme Bakery", status: "up", responseTimeMs: 412, ...over });
+  it("names one site and how fast it answered", () => {
+    expect(scanMessage([o()])).toBe("Acme Bakery is up (412 ms).");
+    expect(scanMessage([o({ status: "down", responseTimeMs: null })])).toBe("Acme Bakery is down.");
+    expect(scanMessage([o({ status: "slow", responseTimeMs: 3500 })])).toBe("Acme Bakery is slow (3500 ms).");
+  });
+  it("says plainly when one site's scan could not be saved", () => {
+    expect(scanMessage([o({ status: "failed", responseTimeMs: null })])).toBe("Acme Bakery: the scan could not be saved. Try again.");
+  });
+  it("summarises several sites, mentioning only the states that occur", () => {
+    expect(scanMessage([o(), o({ clientId: "c2" })])).toBe("Scanned 2 sites: 2 up.");
+    expect(scanMessage([o(), o({ clientId: "c2", status: "down" }), o({ clientId: "c3", status: "slow" }), o({ clientId: "c4", status: "failed" })])).toBe("Scanned 4 sites: 1 up, 1 slow, 1 down, 1 could not be scanned.");
+  });
+  it("says what was left for the next run, and handles nothing to scan", () => {
+    expect(scanMessage([o(), o({ clientId: "c2" })], 3)).toBe("Scanned 2 sites: 2 up. 3 will be scanned on the next run.");
+    expect(scanMessage([], 0)).toBe("There are no sites to scan.");
+    expect(scanMessage([], 4)).toBe("No site could be scanned in time. Try again.");
   });
 });
