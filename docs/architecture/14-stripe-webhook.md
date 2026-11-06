@@ -101,3 +101,15 @@ email that invoice to the client again (`invoices.sendInvoice`); nothing about t
 - **When Stripe refuses** (for example some automatically charged subscription invoices cannot be emailed by
   hand), the button shows Stripe's reason and the invoice's payment page link to send yourself.
 - Not tested against live Stripe: try it first on an invoice you are happy to re-send.
+
+## Unassigned payments (added 2026-11-06)
+
+A successful `charge.succeeded` that has **no Stripe customer** (for example a Payment Link or Checkout set to create a
+customer only "if required"), or whose customer is not one of our clients, used to be dropped (the old app did the
+same). It is now recorded once as an **unassigned payment**: a `revenue_events` row with `client_id` null, status
+`paid`, type `one_time`, keyed by the charge id. No client is created or changed. Charges that belong to an invoice
+are still left to `invoice.paid`.
+
+The `activity_alerts` job announces it as "Payment received: $X (no client attached)". It counts in v2's "paid this
+month"; the old app's Payments screen skips rows without a client. Stripe shows who paid (the alert does not include
+the payer's name or email).

@@ -40,6 +40,16 @@ const stateOf = (rows: AlertStateRow[], key: string) => rows.find((r) => r.key =
 const nameOf = (clients: Record<string, ClientInfo>, id: string | null) => (id ? (clients[id]?.name ?? "A client") : "A client");
 
 function paymentAlert(p: PaymentRow, clients: Record<string, ClientInfo>): PushPayload | null {
+  if (p.clientId === null) {
+    // An unassigned payment (no Stripe customer, e.g. a Payment Link): say so plainly; Stripe shows who paid.
+    if (p.status !== "paid") return null;
+    return {
+      title: clip(`Payment received: ${formatMoney(p.amount)} (no client attached)`, 70),
+      body: clip("Paid through a payment link or checkout without a Stripe customer. Open Stripe to see who paid.", 120),
+      url: "/",
+      tag: `payment-${p.id}`,
+    };
+  }
   const who = nameOf(clients, p.clientId);
   const link = p.clientId ? `/clients/${p.clientId}` : "/";
   if (p.status === "paid") {

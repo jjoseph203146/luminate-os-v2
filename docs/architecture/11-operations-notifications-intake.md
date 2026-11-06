@@ -28,7 +28,7 @@ One owner per scheduled job (CLAUDE.md): enable `site_checks` in the same step t
 
 ## Payment and client activity alerts (added 2026-11-06)
 The `activity_alerts` job (migration `0005`, every 5 minutes on the existing tick) pushes a notification once for each:
-- **Payment received / failed**, from `revenue_events` (written by the old app's Stripe webhook). A failed payment that is later paid announces both. No failed alert for clients on hold or archived (same as the old app).
+- **Payment received / failed**, from `revenue_events` (including unassigned payments with no client, announced as "no client attached") (written by the old app's Stripe webhook). A failed payment that is later paid announces both. No failed alert for clients on hold or archived (same as the old app).
 - **New client request / comment**, from the `notifications` rows the old client portal writes (`new_request`, `new_comment`). Requests added in v2 Quick Add write no such row, so they do not notify. Comment text is never put in a notification.
 
 The webhook and the portal stay in the old app; this job only reads what they wrote and writes `alert_state` (keys `payment:<id>`, `notif:<id>`, `activity:seeded`). The first run records what already exists without notifying, only the last 14 days are looked at, and at most 10 pushes go out per run. Until the old app's matching pushes are muted (`OLD_PUSH_MUTE=payment_received,payment_failed,new_request,new_comment`), both apps notify.

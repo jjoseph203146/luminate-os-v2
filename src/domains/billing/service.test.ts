@@ -278,12 +278,32 @@ describe("charge.succeeded", () => {
     expect(repo.revenue).toEqual([]);
     expect(stripe.paymentIntentHasInvoice).toHaveBeenCalledWith("pi_1");
   });
-  it("skips a charge for an unknown customer, and a concurrent duplicate (23505)", async () => {
-    await run("charge.succeeded", charge({ customer: "cus_unknown" }));
+  it("a concurrent duplicate (23505) of a client's charge changes nothing on the client", async () => {
     vi.spyOn(repo, "insertRevenue").mockResolvedValueOnce("conflict");
     await run("charge.succeeded", charge());
     expect(repo.revenue).toEqual([]);
     expect(repo.clients[0]!.lifetime_value).toBe(100);
+  });
+  it("records a payment with no Stripe customer (a Payment Link) as unassigned, once, touching no client", async () => {
+    await run("charge.succeeded", charge({ id: "ch_link", customer: null, amount: 50 }));
+    await run("charge.succeeded", charge({ id: "ch_link", customer: null, amount: 50 }));
+    expect(repo.revenue).toEqual([expect.objectContaining({ stripe_invoice_id: "ch_link", client_id: null, amount: 0.5, status: "paid", event_type: "one_time" })]);
+    expect(repo.clients[0]!.lifetime_value).toBe(100);
+    expect(repo.clients).toHaveLength(1);
+  });
+  it("records a charge from a customer who is not one of our clients as unassigned (no client is created)", async () => {
+    await run("charge.succeeded", charge({ id: "ch_x", customer: "cus_unknown" }));
+    expect(repo.revenue).toEqual([expect.objectContaining({ stripe_invoice_id: "ch_x", client_id: null, status: "paid" })]);
+    expect(repo.clients).toHaveLength(1);
+  });
+  it("an unassigned charge losing an insert race (23505) is not an error", async () => {
+    vi.spyOn(repo, "insertRevenue").mockResolvedValueOnce("conflict");
+    await expect(run("charge.succeeded", charge({ id: "ch_race", customer: null }))).resolves.toBe("handled");
+  });
+  it("a Payment Link that created an invoice is still left to invoice.paid (no double counting)", async () => {
+    stripe.paymentIntentHasInvoice.mockResolvedValueOnce(true);
+    await run("charge.succeeded", charge({ id: "ch_inv", customer: null, payment_intent: "pi_inv" }));
+    expect(repo.revenue).toEqual([]);
   });
 });
 

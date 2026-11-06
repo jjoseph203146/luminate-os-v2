@@ -76,9 +76,16 @@ describe("payments", () => {
   it("ignores pending and unknown statuses", () => {
     expect(planActivityAlerts(input({ payments: [payment({ status: "pending" }), payment({ id: "p9", status: "refunded" })] }), NOW)).toEqual([]);
   });
-  it("copes with a missing client", () => {
-    const plan = planActivityAlerts(input({ clients: {}, payments: [payment({ clientId: null })] }), NOW);
-    expect(first(plan).payload).toMatchObject({ title: "Payment received: A client", url: "/" });
+  it("announces an unassigned payment (no client attached) with the amount, and never a failed one", () => {
+    const plan = planActivityAlerts(input({ clients: {}, payments: [payment({ id: "p9", clientId: null, amount: 0.5 })] }), NOW);
+    expect(first(plan).payload).toMatchObject({ title: "Payment received: $0.50 (no client attached)", url: "/", tag: "payment-p9" });
+    expect(first(plan).payload?.body).toContain("Open Stripe to see who paid");
+    const failed = planActivityAlerts(input({ clients: {}, payments: [payment({ id: "p10", clientId: null, status: "failed", paidAt: null })] }), NOW);
+    expect(failed).toEqual([{ key: "payment:p10", state: "failed", payload: null, at: expect.any(String) }]);
+  });
+  it("copes with a client id it cannot find", () => {
+    const plan = planActivityAlerts(input({ clients: {}, payments: [payment({ clientId: "gone" })] }), NOW);
+    expect(first(plan).payload).toMatchObject({ title: "Payment received: A client", url: "/clients/gone" });
   });
 });
 
