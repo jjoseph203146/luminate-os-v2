@@ -1,9 +1,9 @@
-// The four destinations (Money comes later) (docs: Screens and Functionality for Design).
+// The five destinations (docs: Screens and Functionality for Design).
 // A destination that is not built yet is listed as disabled, never hidden.
 import type { IconName } from "@/ui/Icon";
 
 export type Destination = {
-  key: "today" | "clients" | "work" | "growth";
+  key: "today" | "clients" | "work" | "growth" | "money";
   label: string;
   href: string;
   icon: IconName;
@@ -17,6 +17,7 @@ export const DESTINATIONS: Destination[] = [
   { key: "clients", label: "Clients", href: "/clients", icon: "group", enabled: true, match: ["/clients"] },
   { key: "work", label: "Work", href: "/work", icon: "checklist", enabled: true, match: ["/work"] },
   { key: "growth", label: "Growth", href: "/growth", icon: "trending_up", enabled: true, match: ["/growth"] },
+  { key: "money", label: "Money", href: "/money", icon: "account_balance_wallet", enabled: true, match: ["/money"] },
 ];
 
 export function isActive(destination: Destination, pathname: string): boolean {

@@ -21,7 +21,7 @@ type Props = {
 };
 
 /**
- * Phone: page content with a bottom bar of the four destinations and a round Quick add button.
+ * Phone: page content with a bottom bar of the five destinations and a round Quick add button.
  * md and up: 228px sidebar, 60px top bar, content up to 1120px wide.
  */
 export function AppShell({ children, env, email, signOut, clients, clientsError }: Props) {
@@ -67,7 +67,7 @@ export function AppShell({ children, env, email, signOut, clients, clientsError 
 
       <nav
         aria-label="Main"
-        className="fixed inset-x-0 bottom-0 z-30 grid h-[calc(58px+max(26px,env(safe-area-inset-bottom)))] grid-cols-4 border-t border-line bg-navbg pb-[max(26px,env(safe-area-inset-bottom))] backdrop-blur md:hidden"
+        className="fixed inset-x-0 bottom-0 z-30 grid h-[calc(58px+max(26px,env(safe-area-inset-bottom)))] grid-cols-5 border-t border-line bg-navbg pb-[max(26px,env(safe-area-inset-bottom))] backdrop-blur md:hidden"
       >
         <NavLinks variant="bottom" />
       </nav>
