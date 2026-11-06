@@ -9,6 +9,9 @@ import { Icon, type IconName } from "@/ui/Icon";
 import { Flag, StatusBadge } from "@/ui/StatusBadge";
 import { ActionTile, EmptyNote, Group, Initials, ListRow, Pill, SectionHead, type KitTone } from "@/ui/kit";
 import { PageTitle } from "@/ui/shell/PageTitle";
+import { ActionForm } from "@/ui/ActionForm";
+import { BTN_SMALL } from "@/ui/forms";
+import { resendInvoiceAction } from "./actions";
 import { AddRequestLink, ClientRequestTile } from "@/ui/shell/QuickAddButtons";
 
 export const metadata = { title: "Client" };
@@ -338,16 +341,23 @@ export default async function ClientWorkspacePage({ params, searchParams }: { pa
                   ws.payments.map((p) => {
                     const tone: KitTone = p.status === "paid" ? "green" : p.status === "failed" ? "red" : "amber";
                     return (
-                      <ListRow
-                        key={p.id}
-                        icon={p.status === "failed" ? "credit_card_off" : "payments"}
-                        tone={tone}
-                        title={formatMoney(p.amount)}
-                        sub={p.paidAt ? `Paid ${ageLabel(p.paidAt, now)} · not verified` : `Recorded ${ageLabel(p.createdAt, now)} · not verified`}
-                        pill={statusLabel(p.status)}
-                        pillTone={tone}
-                        minH="min-h-[60px]"
-                      />
+                      <div key={p.id}>
+                        <ListRow
+                          icon={p.status === "failed" ? "credit_card_off" : "payments"}
+                          tone={tone}
+                          title={formatMoney(p.amount)}
+                          sub={p.paidAt ? `Paid ${ageLabel(p.paidAt, now)} · not verified` : `Recorded ${ageLabel(p.createdAt, now)} · not verified`}
+                          pill={statusLabel(p.status)}
+                          pillTone={tone}
+                          minH="min-h-[60px]"
+                        />
+                        {p.invoiceId && (
+                          <ActionForm action={resendInvoiceAction} submitLabel="Resend invoice" className="flex flex-col gap-2 px-3.5 pb-3" buttonClassName={BTN_SMALL}>
+                            <input type="hidden" name="clientId" value={ws.client.id} />
+                            <input type="hidden" name="invoiceId" value={p.invoiceId} />
+                          </ActionForm>
+                        )}
+                      </div>
                     );
                   })
                 )}

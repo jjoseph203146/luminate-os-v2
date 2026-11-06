@@ -273,3 +273,31 @@ export function isProductionEnv(appEnv: string | undefined, vercelEnv: string | 
 export function ignoreTestModeEvent(livemode: boolean, appEnv: string | undefined, vercelEnv?: string | undefined): boolean {
   return !livemode && isProductionEnv(appEnv, vercelEnv);
 }
+
+// --- Resend invoice (owner button on the client page) -------------------------------------------
+
+/** A Stripe invoice id. Charges (ch_...) and payments (py_...) cannot be re-sent. */
+export const INVOICE_ID_PATTERN = /^in_[A-Za-z0-9]{8,}$/;
+
+/** Why Stripe must not be asked to send this invoice, in plain words; null when it may be sent. */
+export function invoiceSendBlock(status: string | null): string | null {
+  if (status === "draft") return "This invoice is still a draft in Stripe. Finalize it in Stripe before sending it.";
+  if (status === "void") return "This invoice was voided in Stripe, so it was not sent.";
+  if (status === "uncollectible") return "This invoice is marked uncollectible in Stripe, so it was not sent.";
+  return null;
+}
+
+const label = (number: string | null) => (number ? `Invoice ${number}` : "The invoice");
+
+/** The message after Stripe accepted the send. */
+export function invoiceSentMessage(number: string | null, status: string | null): string {
+  if (status === "paid") return `${label(number)} was emailed to the client again. It is already paid, so nothing is due.`;
+  return `${label(number)} was emailed to the client by Stripe.`;
+}
+
+/** The message when Stripe refused: Stripe's own reason, and the payment page to share by hand when there is one. */
+export function invoiceRefusedMessage(stripeMessage: string | null, hostedUrl: string | null): string {
+  const reason = (stripeMessage ?? "no reason given").replace(/\s+/g, " ").trim().slice(0, 240);
+  const link = hostedUrl && /^https:\/\//.test(hostedUrl) ? ` You can send the client this payment page instead: ${hostedUrl}` : "";
+  return `Stripe did not send it: ${reason}.${link}`;
+}

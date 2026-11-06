@@ -65,6 +65,8 @@ export interface ClientRequest {
 
 export interface ClientPayment {
   id: string;
+  /** The Stripe invoice (in_...) this payment is for, so it can be re-sent. Null for standalone charges. */
+  invoiceId?: string | null;
   amount: number;
   status: string;
   eventType: string;

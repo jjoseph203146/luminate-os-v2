@@ -100,6 +100,15 @@ export function getStripeConfig(source: NodeJS.ProcessEnv = process.env): Stripe
   return { secretKey: key.data, webhookSecret: live.success ? live.data : null, webhookSecretTest: test.success ? test.data : null };
 }
 
+/**
+ * A separate Stripe key that may send invoices (restricted key with Invoices: Write). Kept apart from
+ * STRIPE_SECRET_KEY, which stays read-only for the webhook. Null when unset: the Resend button then explains why.
+ */
+export function getStripeInvoiceKey(source: NodeJS.ProcessEnv = process.env): string | null {
+  const key = stripeKeySchema.safeParse(source.STRIPE_INVOICE_KEY?.trim());
+  return key.success ? key.data : null;
+}
+
 /** Google API key for PageSpeed Insights (speed and visual checks). Null when unset: the checks then run without a key (low shared quota). */
 export function getPagespeedKey(source: NodeJS.ProcessEnv = process.env): string | null {
   const v = source.PAGESPEED_API_KEY?.trim();
@@ -153,6 +162,7 @@ export function envChecks(source: NodeJS.ProcessEnv = process.env): EnvCheck[] {
     { name: "STRIPE_SECRET_KEY", required: false },
     { name: "STRIPE_WEBHOOK_SECRET", required: false },
     { name: "STRIPE_WEBHOOK_SECRET_TEST", required: false },
+    { name: "STRIPE_INVOICE_KEY", required: false },
     { name: "PAGESPEED_API_KEY", required: false },
     { name: "MCP_API_KEY", required: false },
   ].map((c) => ({ ...c, present: has(c.name) }));

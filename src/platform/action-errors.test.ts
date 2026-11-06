@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formToObject, toActionError } from "./action-errors";
-import { PermissionError, RuleError, ValidationError } from "./errors";
+import { PermissionError, RateLimitError, RuleError, ValidationError } from "./errors";
 import { AuditWriteError } from "./audit/audit";
 import { EnvError } from "./env";
 
@@ -29,5 +29,11 @@ describe("formToObject", () => {
     const fd = new FormData();
     fd.append("f", new Blob(["x"]), "x.txt");
     expect(formToObject(fd)).toEqual({ f: "" });
+  });
+});
+
+describe("toActionError: rate limits", () => {
+  it("shows a rate-limit message instead of the generic error", () => {
+    expect(toActionError(new RateLimitError("You just ran several scans. Wait a minute and try again."))).toBe("You just ran several scans. Wait a minute and try again.");
   });
 });

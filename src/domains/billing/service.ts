@@ -4,9 +4,18 @@
 // and no sync_log rows (v2 keeps its own event ledger, integration_events).
 import { assertCan } from "@/platform/auth/permissions";
 import type { Actor } from "@/platform/auth/types";
+import { z } from "zod";
 import type { StripeReads } from "@/platform/stripe/api";
+import { createInvoiceSender, type InvoiceSender } from "@/platform/stripe/invoices";
+import { getStripe } from "@/platform/stripe/client";
+import { getStripeInvoiceKey } from "@/platform/env";
+import { readDb } from "@/platform/db/server";
+import { writeAudit } from "@/platform/audit/audit";
+import { parseInput } from "@/platform/auth/schemas";
+import { RateLimitError, RuleError } from "@/platform/errors";
+import { createRateLimiter } from "@/platform/security/rate-limit";
 import type { BillingRepo } from "./repo";
-import { RepoError } from "./repo";
+import { findClientInvoice, RepoError } from "./repo";
 import {
   accountNameFor,
   backfillPatch,
@@ -27,6 +36,10 @@ import {
   subscriptionFields,
   type CustomerLike,
   type InvoiceLike,
+  INVOICE_ID_PATTERN,
+  invoiceRefusedMessage,
+  invoiceSendBlock,
+  invoiceSentMessage,
 } from "./rules";
 
 export interface BillingDeps {
@@ -435,4 +448,74 @@ export async function ingestStripeEvent(actor: Actor, event: StripeEventLike, d:
   }
   await d.repo.finishLedger(event.id, "processed", null);
   return { result: "processed" };
+}
+
+// --- Resend invoice (the owner's button on the client page) ------------------------------------------
+
+type Owner = Extract<Actor, { type: "owner" }>;
+
+const resendSchema = z.object({
+  clientId: z.string().uuid("That client was not recognised."),
+  invoiceId: z.string().regex(INVOICE_ID_PATTERN, "That is not a Stripe invoice."),
+});
+/** At most this many sends a minute per owner: a double click must not email a client twice in a row. */
+const resendLimiter = createRateLimiter({ max: 5, windowMs: 60_000 });
+
+export interface InvoiceSendDeps {
+  /** Null when STRIPE_INVOICE_KEY is not set. */
+  sender: InvoiceSender | null;
+  findInvoice: (clientId: string, invoiceId: string) => Promise<{ stripeCustomerId: string | null } | null>;
+  now: () => number;
+}
+
+/**
+ * Asks Stripe to email one of this client's invoices again. Checks, in order: the owner, the input, the rate limit,
+ * that the invoice is recorded for this client, that sending is set up, that Stripe's invoice belongs to the
+ * client's Stripe customer, and that its status allows sending. Stripe's refusal is shown in plain words with the
+ * payment page to share by hand. Never changes the invoice itself.
+ */
+export async function resendInvoice(actor: Owner, raw: unknown, deps: Partial<InvoiceSendDeps> = {}): Promise<{ message: string }> {
+  assertCan(actor, "billing.invoice_send");
+  const { clientId, invoiceId } = parseInput(resendSchema, raw ?? {});
+  const now = deps.now ?? Date.now;
+  if (!resendLimiter.check(actor.userId, now())) throw new RateLimitError("You just sent several invoices. Wait a minute and try again.");
+
+  const findInvoice = deps.findInvoice ?? (async (c: string, i: string) => findClientInvoice(await readDb(actor), c, i));
+  const record = await findInvoice(clientId, invoiceId);
+  if (!record) throw new RuleError("That invoice is not recorded for this client.");
+
+  const sender = "sender" in deps ? (deps.sender ?? null) : defaultInvoiceSender();
+  if (!sender) throw new RuleError("Sending invoices is not set up yet. Add STRIPE_INVOICE_KEY (a Stripe restricted key with Invoices: Write) in Vercel and redeploy.");
+
+  let invoice;
+  try {
+    invoice = await sender.retrieve(invoiceId);
+  } catch {
+    throw new RuleError("Stripe could not find this invoice.");
+  }
+  if (!record.stripeCustomerId || invoice.customerId !== record.stripeCustomerId) {
+    throw new RuleError("This invoice belongs to a different Stripe customer, so it was not sent.");
+  }
+  const block = invoiceSendBlock(invoice.status);
+  if (block) throw new RuleError(block);
+
+  try {
+    await sender.send(invoiceId);
+  } catch (e) {
+    const message = typeof (e as { message?: unknown })?.message === "string" ? (e as { message: string }).message : null;
+    throw new RuleError(invoiceRefusedMessage(message, invoice.hostedUrl));
+  }
+
+  // The email has gone: a failed audit write must not make it look failed (a retry would email the client twice).
+  try {
+    await writeAudit(actor, { action: "invoice.resent", entityType: "invoice", entityId: invoiceId, clientId, after: { number: invoice.number, status: invoice.status } });
+  } catch {
+    /* already logged by writeAudit */
+  }
+  return { message: invoiceSentMessage(invoice.number, invoice.status) };
+}
+
+function defaultInvoiceSender(): InvoiceSender | null {
+  const key = getStripeInvoiceKey();
+  return key ? createInvoiceSender(getStripe(key)) : null;
 }

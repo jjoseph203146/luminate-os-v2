@@ -1,11 +1,11 @@
 // Turns thrown errors into messages that are safe to show on screen.
-import { PermissionError, RuleError, ValidationError } from "@/platform/errors";
+import { PermissionError, RateLimitError, RuleError, ValidationError } from "@/platform/errors";
 import { AuditWriteError } from "@/platform/audit/audit";
 import { EnvError } from "@/platform/env";
 
 export function toActionError(e: unknown): string {
   if (e instanceof ValidationError) return e.issues.join(" ");
-  if (e instanceof PermissionError || e instanceof RuleError || e instanceof AuditWriteError) return e.message;
+  if (e instanceof PermissionError || e instanceof RuleError || e instanceof RateLimitError || e instanceof AuditWriteError) return e.message;
   if (e instanceof EnvError) return "The server is not fully configured. See System status.";
   return "Something went wrong. Please try again.";
 }
