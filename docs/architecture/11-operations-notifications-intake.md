@@ -3,6 +3,7 @@
 Added so the owner can use v2 daily on a phone. Additive only: no existing table or policy changed.
 
 ## Installable app
+App icons (`public/icons/*`, `public/logo.png`) are the silver "L" from the website's `images/logo-mark.jpg` (895x973), centred on its navy background with equal margins and kept inside the 80% safe circle so Android's round masks do not clip it. Rebuild them from that file, not from an existing icon (the old ones were cropped from a screenshot and showed a white edge).
 `src/app/manifest.ts` serves `/manifest.webmanifest`; icons are in `public/icons/`. The manifest, `/sw.js`,
 `/icons/*` and `/logo.png` are public paths (the browser asks for them before sign-in).
 
