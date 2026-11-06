@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { envChecks, EnvError, getAppSettings, getCronSecret, getPublicEnv } from "./env";
+import { envChecks, EnvError, getAppSettings, getCronSecret, getMcpKey, getPublicEnv } from "./env";
 
 const good = {
   NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
@@ -26,11 +26,20 @@ describe("env", () => {
     expect(getCronSecret({ CRON_SECRET: "short" } as unknown as NodeJS.ProcessEnv)).toBeNull();
     expect(getCronSecret({ CRON_SECRET: "x".repeat(32) } as unknown as NodeJS.ProcessEnv)).toBe("x".repeat(32));
   });
+  it("ignores an unset or short assistant connector key", () => {
+    expect(getMcpKey({} as NodeJS.ProcessEnv)).toBeNull();
+    expect(getMcpKey({ MCP_API_KEY: "x".repeat(31) } as unknown as NodeJS.ProcessEnv)).toBeNull();
+    expect(getMcpKey({ MCP_API_KEY: "x".repeat(32) } as unknown as NodeJS.ProcessEnv)).toBe("x".repeat(32));
+  });
   it("defaults to local with MFA off, and follows the switch alone (production too)", () => {
     expect(getAppSettings({} as NodeJS.ProcessEnv)).toMatchObject({ appEnv: "local", mfaRequired: false });
     expect(getAppSettings({ APP_ENV: "production" } as unknown as NodeJS.ProcessEnv).mfaRequired).toBe(false);
     expect(getAppSettings({ APP_ENV: "production", AUTH_REQUIRE_MFA: "true" } as unknown as NodeJS.ProcessEnv).mfaRequired).toBe(true);
     expect(getAppSettings({ APP_ENV: "staging", AUTH_REQUIRE_MFA: "true" } as unknown as NodeJS.ProcessEnv).mfaRequired).toBe(true);
+  });
+  it("lists the assistant connector key as optional", () => {
+    const check = envChecks({ MCP_API_KEY: "k".repeat(40) } as unknown as NodeJS.ProcessEnv).find((c) => c.name === "MCP_API_KEY");
+    expect(check).toEqual({ name: "MCP_API_KEY", required: false, present: true });
   });
   it("reports presence only", () => {
     const checks = envChecks({ CRON_SECRET: "secret-value" } as unknown as NodeJS.ProcessEnv);

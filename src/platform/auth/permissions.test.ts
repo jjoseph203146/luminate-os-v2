@@ -22,3 +22,15 @@ describe("permissions", () => {
     expect(() => assertCan(owner, "settings.write")).not.toThrow();
   });
 });
+
+describe("the ai actor", () => {
+  const ai: Actor = { type: "ai", name: "mcp" };
+  it("can read what the assistant tools need, including the time zone", () => {
+    for (const p of ["assistant.read", "clients.read", "work.read", "growth.read", "monitoring.read", "calendar.read"] as const) expect(can(ai, p)).toBe(true);
+  });
+  it("cannot read Settings, write anything, run jobs, send pushes or see the audit log or users", () => {
+    for (const p of ["settings.read", "settings.write", "work.write", "users.manage", "audit.read", "jobs.run", "jobs.read", "notifications.send", "notifications.manage", "system.read", "growth.intake", "alerts.run"] as const) {
+      expect(can(ai, p)).toBe(false);
+    }
+  });
+});

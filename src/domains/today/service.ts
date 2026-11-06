@@ -2,7 +2,7 @@
 import { assertCan } from "@/platform/auth/permissions";
 import type { Actor } from "@/platform/auth/types";
 import { addCalendarDays, toLocalDate } from "@/platform/calendar/business-days";
-import { createUserClient } from "@/platform/db/server";
+import { readDb } from "@/platform/db/server";
 import { getCalendar } from "@/domains/admin/service";
 import { ATTENTION_LIMIT, buildAttention, buildRevenue, buildTodos, buildWaiting } from "./rules";
 import { loadTodayInputs } from "./repo";
@@ -15,7 +15,7 @@ export async function getToday(actor: Actor): Promise<TodayData> {
   const { timeZone } = await getCalendar(actor);
   const today = toLocalDate(now, timeZone);
   const since = new Date(`${addCalendarDays(today, -62)}T00:00:00Z`).toISOString();
-  const db = await createUserClient();
+  const db = await readDb(actor);
   const input = await loadTodayInputs(db, since);
   const attention = buildAttention(input, today, now, timeZone);
   return {
