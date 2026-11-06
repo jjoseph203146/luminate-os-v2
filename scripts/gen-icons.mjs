@@ -11,7 +11,7 @@ const NAMES = [
   "event", "task_alt", "payments", "history", "description", "folder_zip", "credit_card", "help",
   "block", "schedule", "circle", "edit", "bolt", "verified", "pause_circle", "storefront", "shield",
   "monitor_heart", "web", "assignment", "folder", "person", "front_hand", "credit_card_off", "summarize",
-  "more_horiz", "add_comment", "event_repeat", "handshake", "sticky_note_2", "dashboard", "key", "tune", "download",
+  "autorenew", "receipt_long", "more_horiz", "add_comment", "event_repeat", "handshake", "sticky_note_2", "dashboard", "key", "tune", "download",
   "person_search", "sell", "calendar_month", "keyboard_arrow_down", "draft", "event_busy", "power_settings_new", "open_in_new",
 ];
 const dir = "node_modules/@material-symbols/svg-400/rounded";

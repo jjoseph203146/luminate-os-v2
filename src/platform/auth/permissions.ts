@@ -29,6 +29,8 @@ export const PERMISSIONS = [
   "growth.write",
   /** "Sync from Stripe": record customers and payments the webhook missed. */
   "billing.sync",
+  /** The Money page: payments, MRR, overdue and paused (read only). */
+  "money.read",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
