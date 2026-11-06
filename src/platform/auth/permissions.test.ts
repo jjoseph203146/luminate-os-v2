@@ -34,3 +34,12 @@ describe("the ai actor", () => {
     }
   });
 });
+
+describe("monitoring.scan", () => {
+  it("is for the system actor (the scheduled job) and the owner only", () => {
+    expect(can({ type: "system", name: "site_checks" }, "monitoring.scan")).toBe(true);
+    expect(can({ type: "owner", userId: "u", email: null, ip: null }, "monitoring.scan")).toBe(true);
+    expect(can({ type: "ai", name: "mcp" }, "monitoring.scan")).toBe(false);
+    expect(can({ type: "client" } as never, "monitoring.scan")).toBe(false);
+  });
+});

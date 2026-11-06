@@ -3,6 +3,8 @@ import { getCronSecret } from "@/platform/env";
 import { tickAuthorized } from "@/platform/jobs/auth";
 
 export const dynamic = "force-dynamic";
+// The site scan job checks every client site inside one tick, so the function needs more than the default time.
+export const maxDuration = 60;
 
 // The one scheduler entry point (docs/architecture/04 s5). Vercel Cron calls
 // GET with "Authorization: Bearer $CRON_SECRET"; other schedulers may POST.

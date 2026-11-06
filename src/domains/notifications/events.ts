@@ -35,7 +35,7 @@ export const NOTIFICATION_EVENTS: NotificationEvent[] = [
   },
   {
     title: "Site down",
-    when: "As soon as a check finds a client site down. The old app checks about every 15 minutes and the alert job looks every 5, so expect it up to about 20 minutes after the site actually goes down.",
+    when: "As soon as a check finds a client site down. Luminate OS checks every site every 10 minutes (and tries once more before calling a site down) and the alert job looks every 5, so expect it up to about 15 minutes after the site actually goes down.",
     example: "Site down: Acme Bakery (acmebakery.com)",
   },
   {
@@ -50,7 +50,7 @@ export const NOTIFICATION_EVENTS: NotificationEvent[] = [
   },
   {
     title: "Site checks stalled",
-    when: "When any monitored site has not been checked for over an hour, which means the checker itself has stopped. Archived, on-hold and monitoring-stopped clients are left out.",
+    when: "When any monitored site has not been checked for over an hour, which means the site checks job itself has stopped (see Settings > Automations). Archived, on-hold and monitoring-stopped clients are left out.",
     example: "Site checks look stalled: 3 sites not checked for over an hour",
   },
 ];
