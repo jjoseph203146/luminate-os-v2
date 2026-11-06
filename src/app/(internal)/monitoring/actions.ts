@@ -5,6 +5,7 @@ import { requireOwner } from "@/platform/auth/actor";
 import { formToObject } from "@/platform/action-errors";
 import { runAction } from "@/platform/actions";
 import { scanMessage } from "@/domains/monitoring/rules";
+import { speedMessage } from "@/domains/monitoring/visual-rules";
 import * as monitoring from "@/domains/monitoring/service";
 import type { ActionState } from "@/ui/action-state";
 
@@ -27,4 +28,22 @@ export async function scanSitesAction(_prev: ActionState, formData: FormData): P
     revalidatePath("/clients", "layout");
   }
   return result;
+}
+
+/** "Check speed now" for one site (PageSpeed Insights; takes up to about 40 seconds). */
+export async function checkSpeedAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const actor = await requireOwner();
+  let message = "Speed check finished.";
+  let failed = false;
+  const result = await runAction(
+    async () => {
+      const outcome = await monitoring.checkSpeedNow(actor, formToObject(formData));
+      message = speedMessage(outcome);
+      failed = !outcome.ok;
+    },
+    () => message,
+  );
+  if (result.status === "ok") revalidatePath("/monitoring");
+  // A failed check still saved its error on the site; show it as an error so it stands out.
+  return result.status === "ok" && failed ? { status: "error", message } : result;
 }

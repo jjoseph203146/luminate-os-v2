@@ -69,6 +69,8 @@ export function isPublicPath(pathname: string): boolean {
   if (pathname.startsWith("/icons/")) return true;
   // The AI assistant connector checks its own key (src/platform/security/mcp-auth.ts).
   if (pathname === "/api/mcp") return true;
+  // The Stripe webhook verifies Stripe's signature on every request (no session).
+  if (pathname === "/api/webhooks/stripe") return true;
   // The website contact form posts here without a session (it validates and rate-limits itself).
   if (pathname === "/api/leads/create") return true;
   return false;

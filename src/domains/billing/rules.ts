@@ -117,8 +117,10 @@ export interface ExistingContact {
  * customer.updated only fills a field that is genuinely blank or still the customer.created placeholder,
  * never a value already entered by hand (same rule as the old Sync Stripe Customers button).
  */
-export function backfillPatch(existing: ExistingContact, customer: CustomerLike): Partial<ExistingContact> {
-  const patch: Partial<ExistingContact> = {};
+export type ContactPatch = { business_name?: string; contact_name?: string; email?: string; phone?: string };
+
+export function backfillPatch(existing: ExistingContact, customer: CustomerLike): ContactPatch {
+  const patch: ContactPatch = {};
   if ((!existing.email || existing.email === "no-email") && customer.email) patch.email = customer.email;
   if ((!existing.business_name || existing.business_name === "Unnamed") && customer.name) patch.business_name = customer.name;
   if ((!existing.contact_name || existing.contact_name === "Unknown") && customer.metadata?.contact_name) patch.contact_name = customer.metadata.contact_name;

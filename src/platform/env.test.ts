@@ -12,7 +12,7 @@ describe("env", () => {
   });
   it("names missing variables without echoing values", () => {
     try {
-      getPublicEnv({ NEXT_PUBLIC_SUPABASE_URL: "not a url" } as unknown as NodeJS.ProcessEnv);
+      getPublicEnv({ NEXT_PUBLIC_SUPABASE_URL: "not a url" } as unknown as unknown as NodeJS.ProcessEnv);
       expect.unreachable();
     } catch (e) {
       expect(e).toBeInstanceOf(EnvError);
@@ -23,26 +23,26 @@ describe("env", () => {
     }
   });
   it("ignores a short cron secret", () => {
-    expect(getCronSecret({ CRON_SECRET: "short" } as unknown as NodeJS.ProcessEnv)).toBeNull();
-    expect(getCronSecret({ CRON_SECRET: "x".repeat(32) } as unknown as NodeJS.ProcessEnv)).toBe("x".repeat(32));
+    expect(getCronSecret({ CRON_SECRET: "short" } as unknown as unknown as NodeJS.ProcessEnv)).toBeNull();
+    expect(getCronSecret({ CRON_SECRET: "x".repeat(32) } as unknown as unknown as NodeJS.ProcessEnv)).toBe("x".repeat(32));
   });
   it("ignores an unset or short assistant connector key", () => {
-    expect(getMcpKey({} as NodeJS.ProcessEnv)).toBeNull();
-    expect(getMcpKey({ MCP_API_KEY: "x".repeat(31) } as unknown as NodeJS.ProcessEnv)).toBeNull();
-    expect(getMcpKey({ MCP_API_KEY: "x".repeat(32) } as unknown as NodeJS.ProcessEnv)).toBe("x".repeat(32));
+    expect(getMcpKey({} as unknown as NodeJS.ProcessEnv)).toBeNull();
+    expect(getMcpKey({ MCP_API_KEY: "x".repeat(31) } as unknown as unknown as NodeJS.ProcessEnv)).toBeNull();
+    expect(getMcpKey({ MCP_API_KEY: "x".repeat(32) } as unknown as unknown as NodeJS.ProcessEnv)).toBe("x".repeat(32));
   });
   it("defaults to local with MFA off, and follows the switch alone (production too)", () => {
-    expect(getAppSettings({} as NodeJS.ProcessEnv)).toMatchObject({ appEnv: "local", mfaRequired: false });
-    expect(getAppSettings({ APP_ENV: "production" } as unknown as NodeJS.ProcessEnv).mfaRequired).toBe(false);
-    expect(getAppSettings({ APP_ENV: "production", AUTH_REQUIRE_MFA: "true" } as unknown as NodeJS.ProcessEnv).mfaRequired).toBe(true);
-    expect(getAppSettings({ APP_ENV: "staging", AUTH_REQUIRE_MFA: "true" } as unknown as NodeJS.ProcessEnv).mfaRequired).toBe(true);
+    expect(getAppSettings({} as unknown as NodeJS.ProcessEnv)).toMatchObject({ appEnv: "local", mfaRequired: false });
+    expect(getAppSettings({ APP_ENV: "production" } as unknown as unknown as NodeJS.ProcessEnv).mfaRequired).toBe(false);
+    expect(getAppSettings({ APP_ENV: "production", AUTH_REQUIRE_MFA: "true" } as unknown as unknown as NodeJS.ProcessEnv).mfaRequired).toBe(true);
+    expect(getAppSettings({ APP_ENV: "staging", AUTH_REQUIRE_MFA: "true" } as unknown as unknown as NodeJS.ProcessEnv).mfaRequired).toBe(true);
   });
   it("lists the assistant connector key as optional", () => {
-    const check = envChecks({ MCP_API_KEY: "k".repeat(40) } as unknown as NodeJS.ProcessEnv).find((c) => c.name === "MCP_API_KEY");
+    const check = envChecks({ MCP_API_KEY: "k".repeat(40) } as unknown as unknown as NodeJS.ProcessEnv).find((c) => c.name === "MCP_API_KEY");
     expect(check).toEqual({ name: "MCP_API_KEY", required: false, present: true });
   });
   it("reports presence only", () => {
-    const checks = envChecks({ CRON_SECRET: "secret-value" } as unknown as NodeJS.ProcessEnv);
+    const checks = envChecks({ CRON_SECRET: "secret-value" } as unknown as unknown as NodeJS.ProcessEnv);
     expect(checks.find((c) => c.name === "CRON_SECRET")?.present).toBe(true);
     expect(checks.find((c) => c.name === "APP_URL")?.present).toBe(false);
     expect(JSON.stringify(checks)).not.toContain("secret-value");
@@ -53,28 +53,28 @@ describe("getStripeConfig", () => {
   const key = `sk_test_${"x".repeat(24)}`;
   const whsec = `whsec_${"y".repeat(24)}`;
   it("is null without a valid secret or restricted key, so the webhook refuses everything", () => {
-    expect(getStripeConfig({} as NodeJS.ProcessEnv)).toBeNull();
-    expect(getStripeConfig({ STRIPE_SECRET_KEY: "pk_live_notasecret1234567890" } as NodeJS.ProcessEnv)).toBeNull();
-    expect(getStripeConfig({ STRIPE_SECRET_KEY: "nonsense" } as NodeJS.ProcessEnv)).toBeNull();
+    expect(getStripeConfig({} as unknown as NodeJS.ProcessEnv)).toBeNull();
+    expect(getStripeConfig({ STRIPE_SECRET_KEY: "pk_live_notasecret1234567890" } as unknown as NodeJS.ProcessEnv)).toBeNull();
+    expect(getStripeConfig({ STRIPE_SECRET_KEY: "nonsense" } as unknown as NodeJS.ProcessEnv)).toBeNull();
   });
   it("accepts a secret or restricted key, with optional live and test signing secrets", () => {
-    expect(getStripeConfig({ STRIPE_SECRET_KEY: key } as NodeJS.ProcessEnv)).toEqual({ secretKey: key, webhookSecret: null, webhookSecretTest: null });
+    expect(getStripeConfig({ STRIPE_SECRET_KEY: key } as unknown as NodeJS.ProcessEnv)).toEqual({ secretKey: key, webhookSecret: null, webhookSecretTest: null });
     const restricted = `rk_live_${"z".repeat(24)}`;
-    expect(getStripeConfig({ STRIPE_SECRET_KEY: ` ${restricted} `, STRIPE_WEBHOOK_SECRET: whsec, STRIPE_WEBHOOK_SECRET_TEST: whsec } as NodeJS.ProcessEnv)).toEqual({
+    expect(getStripeConfig({ STRIPE_SECRET_KEY: ` ${restricted} `, STRIPE_WEBHOOK_SECRET: whsec, STRIPE_WEBHOOK_SECRET_TEST: whsec } as unknown as NodeJS.ProcessEnv)).toEqual({
       secretKey: restricted,
       webhookSecret: whsec,
       webhookSecretTest: whsec,
     });
   });
   it("ignores a malformed signing secret instead of trusting it", () => {
-    expect(getStripeConfig({ STRIPE_SECRET_KEY: key, STRIPE_WEBHOOK_SECRET: "secret" } as NodeJS.ProcessEnv)?.webhookSecret).toBeNull();
+    expect(getStripeConfig({ STRIPE_SECRET_KEY: key, STRIPE_WEBHOOK_SECRET: "secret" } as unknown as NodeJS.ProcessEnv)?.webhookSecret).toBeNull();
   });
 });
 
 describe("getPagespeedKey", () => {
   it("returns a plausible key and null otherwise", () => {
-    expect(getPagespeedKey({} as NodeJS.ProcessEnv)).toBeNull();
-    expect(getPagespeedKey({ PAGESPEED_API_KEY: "short" } as NodeJS.ProcessEnv)).toBeNull();
-    expect(getPagespeedKey({ PAGESPEED_API_KEY: ` ${"A".repeat(39)} ` } as NodeJS.ProcessEnv)).toBe("A".repeat(39));
+    expect(getPagespeedKey({} as unknown as NodeJS.ProcessEnv)).toBeNull();
+    expect(getPagespeedKey({ PAGESPEED_API_KEY: "short" } as unknown as NodeJS.ProcessEnv)).toBeNull();
+    expect(getPagespeedKey({ PAGESPEED_API_KEY: ` ${"A".repeat(39)} ` } as unknown as NodeJS.ProcessEnv)).toBe("A".repeat(39));
   });
 });

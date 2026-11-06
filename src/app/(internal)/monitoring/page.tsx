@@ -9,7 +9,7 @@ import { Banner, BTN_PRIMARY, BTN_SMALL, Card, Heading } from "@/ui/forms";
 import { Icon } from "@/ui/Icon";
 import { Pill } from "@/ui/kit";
 import { PageTitle } from "@/ui/shell/PageTitle";
-import { scanSitesAction } from "./actions";
+import { checkSpeedAction, scanSitesAction } from "./actions";
 
 export const metadata = { title: "Monitoring" };
 // "Scan now" runs the checks inside the request: a few seconds normally, at most about 25.
@@ -43,7 +43,7 @@ function Stat({ label, value, bad = false }: { label: string; value: string; bad
 
 export default async function MonitoringPage() {
   const actor = await requireOwner();
-  const { sites, issues, timeZone, asOf } = await getMonitoringOverview(actor);
+  const { sites, issues, visual, timeZone, asOf } = await getMonitoringOverview(actor);
   const now = new Date(asOf);
   const ORDER = ["down", "attention", "unknown", "up", "off"];
   const rows = sites
@@ -102,12 +102,39 @@ export default async function MonitoringPage() {
                     {m.lastCheckedAt ? ` (${formatInTimeZone(m.lastCheckedAt, timeZone)})` : ""}
                   </div>
                   {m.lastError && <div className="mt-1 break-words text-[12px] text-red">{m.lastError}</div>}
+                  {(() => {
+                    const v = visual?.[m.clientId];
+                    if (m.muteReason === "paused" && !v) return null;
+                    return (
+                      <div className="mt-3 border-t border-line pt-2.5">
+                        <div className="text-[11px] font-semibold uppercase tracking-[.08em] text-dim">Speed and visual (mobile)</div>
+                        {v && v.performanceScore !== null ? (
+                          <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-2 md:grid-cols-5">
+                            <Stat label="Speed" value={`${v.performanceScore}/100`} bad={v.performanceScore < 50} />
+                            <Stat label="LCP" value={v.lcpMs === null ? "n/a" : `${(v.lcpMs / 1000).toFixed(1)} s`} bad={(v.lcpMs ?? 0) > 4000} />
+                            <Stat label="CLS" value={v.cls === null ? "n/a" : String(v.cls)} bad={(v.cls ?? 0) > 0.25} />
+                            <Stat label="TBT" value={v.tbtMs === null ? "n/a" : `${v.tbtMs} ms`} bad={(v.tbtMs ?? 0) > 600} />
+                            <Stat label="Visual change" value={v.diffPercent === null ? "n/a" : `${v.diffPercent}%`} bad={(v.diffPercent ?? 0) >= 20} />
+                          </div>
+                        ) : (
+                          <div className="mt-1 text-[12px] text-dim">Not checked yet.</div>
+                        )}
+                        {v?.lastCheckedAt && <div className="mt-1.5 text-[12px] text-dim">Speed checked {ago(v.lastCheckedAt, now)}</div>}
+                        {v?.lastError && <div className="mt-1 break-words text-[12px] text-red">{v.lastError}</div>}
+                      </div>
+                    );
+                  })()}
                   {m.muteReason === "paused" ? (
                     <div className="mt-2 text-[12px] text-dim">Monitoring is switched off for this client, so it is not scanned.</div>
                   ) : (
-                    <ActionForm action={scanSitesAction} submitLabel="Scan now" className="mt-2.5 flex flex-col gap-2" buttonClassName={BTN_SMALL}>
-                      <input type="hidden" name="clientId" value={m.clientId} />
-                    </ActionForm>
+                    <div className="mt-2.5 flex flex-wrap items-start gap-2">
+                      <ActionForm action={scanSitesAction} submitLabel="Scan now" className="flex flex-col gap-2" buttonClassName={BTN_SMALL}>
+                        <input type="hidden" name="clientId" value={m.clientId} />
+                      </ActionForm>
+                      <ActionForm action={checkSpeedAction} submitLabel="Check speed now" className="flex flex-col gap-2" buttonClassName={BTN_SMALL}>
+                        <input type="hidden" name="clientId" value={m.clientId} />
+                      </ActionForm>
+                    </div>
                   )}
                 </div>
               );

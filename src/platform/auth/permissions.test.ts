@@ -43,3 +43,15 @@ describe("monitoring.scan", () => {
     expect(can({ type: "client" } as never, "monitoring.scan")).toBe(false);
   });
 });
+
+describe("the integration actor (the Stripe webhook)", () => {
+  const stripe: Actor = { type: "integration", name: "stripe" };
+  it("may ingest billing events and nothing else", () => {
+    expect(can(stripe, "billing.ingest")).toBe(true);
+    for (const p of PERMISSIONS.filter((x) => x !== "billing.ingest")) expect(can(stripe, p)).toBe(false);
+  });
+  it("no other machine actor may ingest billing events", () => {
+    expect(can({ type: "system", name: "jobs" }, "billing.ingest")).toBe(false);
+    expect(can({ type: "ai", name: "mcp" }, "billing.ingest")).toBe(false);
+  });
+});

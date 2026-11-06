@@ -32,7 +32,7 @@ A failed SSL or domain lookup keeps the last known expiry date instead of erasin
 - Only the system actor may run it (`monitoring.scan`).
 
 ## Not ported
-- Visual regression and Core Web Vitals screenshots (needs a real browser; the old GitHub Actions workflow did it).
+- Visual regression and Core Web Vitals: now done by the `visual_checks` job (see below), without a browser.
 - Sentry ingest (`site_issues`): still written by the old app.
 - The "security score dropped" push (v2's alerts cover down, back up, SSL and domain expiry, and stalled checks).
 
@@ -46,3 +46,48 @@ Do these in the same sitting as enabling the job:
 - Settings > Automations: `site_checks` shows a succeeded run every 10 minutes, with `scanned` equal to the number of monitored sites.
 - `select client_id, status, last_checked_at from public.site_monitors order by last_checked_at desc;` shows every `last_checked_at` within the last 10 minutes or so.
 - The Monitoring screen shows no "stale" sites.
+
+## Speed and visual checks (`visual_checks` job, migration 0008)
+
+**What it does.** For each client site that the site scan also checks (not archived, not paused), Google PageSpeed
+Insights v5 runs Lighthouse on Google's servers with the **mobile** strategy and the performance category. Stored
+per client in `site_visual_checks` (the table the old app's visual check wrote, so the old console and the client
+portal keep reading it):
+
+| Column | From PageSpeed Insights |
+|---|---|
+| `performance_score` | Lighthouse performance score, 0-100 |
+| `lcp_ms` | Largest Contentful Paint |
+| `cls` | Cumulative Layout Shift (3 decimals) |
+| `tbt_ms` | Total Blocking Time |
+| `screenshot_path` | `<client_id>/latest.jpg` in the private `site-screenshots` bucket |
+| `diff_percent` | share of pixels that changed since the previous screenshot (a colour channel moved by more than 32 of 255); empty for the first check or when the size changed |
+| `last_checked_at`, `last_error` | when it ran; why it failed. A failed check writes only these (and `url`), so the last good numbers stay |
+
+**Cadence.** The job runs every 15 minutes on the tick and checks the sites whose last check is **older than 12
+hours**, never-checked sites first, **at most two per run**, in parallel. One PageSpeed call can take up to 40 s, so
+the job does nothing when less than 45 s is left in the tick (the next tick does it). Ten sites are all refreshed
+within a few hours, and each about twice a day. **Check speed now** on the Monitoring screen runs it for one site
+(owner only, at most 6 a minute, one `visual_check.run_manual` audit row each).
+
+**Quota and `PAGESPEED_API_KEY`.** Without a key, Google allows only a small shared quota and often answers 429; the
+check then records "PageSpeed Insights refused the request (quota used up)". With a key the free quota is about
+25,000 requests a day, far more than needed. To create one: Google Cloud console > APIs & Services > Library >
+enable **PageSpeed Insights API** > Credentials > Create credentials > **API key**; restrict it to the PageSpeed
+Insights API; put it in Vercel (v2 project) as `PAGESPEED_API_KEY` (Production, Sensitive) and redeploy. The key is
+never stored, logged or shown: errors are scrubbed of it.
+
+**Differences from the old Playwright check.**
+- The speed score is Lighthouse's own lab score (the same one PageSpeed Insights shows), not the old home-made
+  average of three thresholds, so the numbers are not directly comparable with older rows.
+- Mobile (a phone viewport on a throttled connection) instead of a 1280x800 desktop window. Mobile scores are lower.
+- The screenshot is PageSpeed's JPEG of the visible screen, not a full-page PNG. The old `latest.png` files are left
+  alone; new checks write `latest.jpg` and point `screenshot_path` at it.
+- Google fetches the site, not our server, so no address guard is needed for this check.
+
+**Not done yet.** Nothing is alerted from these numbers (a big visual change or a speed drop is only shown on the
+Monitoring screen), and the screenshot itself is not shown in v2 (it needs short-lived signed URLs).
+
+**Cutover (one owner).** Apply migration 0008 in the same step that removes the schedule from the old repo's
+`.github/workflows/visual-check.yml` (keep the file for manual runs, as was done for `site-check.yml`). Verify on the
+Automations page that `visual_checks` succeeds, then on the Monitoring screen that "Speed checked" times appear.
