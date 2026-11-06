@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { daysLeft, expiryBucket, hostOf, isStale, planAlerts, scanMessage } from "./rules";
+import { daysLeft, expiryBucket, hostOf, isListed, isStale, planAlerts, scanMessage, siteHealth } from "./rules";
 import type { ScanOutcome, SiteMonitor } from "./types";
 
 const NOW = new Date("2026-11-05T12:00:00Z");
@@ -161,5 +161,31 @@ describe("scanMessage", () => {
     expect(scanMessage([o(), o({ clientId: "c2" })], 3)).toBe("Scanned 2 sites: 2 up. 3 will be scanned on the next run.");
     expect(scanMessage([], 0)).toBe("There are no sites to scan.");
     expect(scanMessage([], 4)).toBe("No site could be scanned in time. Try again.");
+  });
+});
+
+describe("siteHealth and isListed (the Monitoring screen)", () => {
+  const fresh = minsAgo(5);
+  const old = minsAgo(60 * 24 * 16);
+  it("a site with monitoring off is 'Monitoring off', not a problem, however old its last check is", () => {
+    expect(siteHealth({ status: "down", lastCheckedAt: old, muteReason: "paused" }, NOW)).toEqual({ label: "Monitoring off", tone: "gray", kind: "off" });
+  });
+  it("an archived site is marked archived and is not listed", () => {
+    expect(siteHealth({ status: "up", lastCheckedAt: fresh, muteReason: "archived" }, NOW).label).toBe("Archived");
+    expect(isListed({ muteReason: "archived" })).toBe(false);
+    expect(isListed({ muteReason: "paused" })).toBe(true);
+    expect(isListed({ muteReason: "on_hold" })).toBe(true);
+    expect(isListed({})).toBe(true);
+  });
+  it("an on-hold site is judged on its checks like any other (it is still scanned)", () => {
+    expect(siteHealth({ status: "up", lastCheckedAt: fresh, muteReason: "on_hold" }, NOW)).toEqual({ label: "Up", tone: "green", kind: "up" });
+  });
+  it("judges a normal site on its last check", () => {
+    expect(siteHealth({ status: "up", lastCheckedAt: fresh }, NOW).kind).toBe("up");
+    expect(siteHealth({ status: "down", lastCheckedAt: fresh }, NOW)).toEqual({ label: "Down", tone: "red", kind: "down" });
+    expect(siteHealth({ status: "slow", lastCheckedAt: fresh }, NOW).kind).toBe("attention");
+    expect(siteHealth({ status: "unknown", lastCheckedAt: fresh }, NOW).kind).toBe("unknown");
+    expect(siteHealth({ status: "up", lastCheckedAt: old }, NOW)).toEqual({ label: "No recent check", tone: "amber", kind: "attention" });
+    expect(siteHealth({ status: "up", lastCheckedAt: null }, NOW).kind).toBe("attention");
   });
 });

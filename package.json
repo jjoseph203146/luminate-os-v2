@@ -23,10 +23,12 @@
     "@supabase/ssr": "0.12.7",
     "@supabase/supabase-js": "2.119.0",
     "@tailwindcss/postcss": "4.3.4",
+    "jpeg-js": "0.4.4",
     "next": "16.3.4",
     "postcss": "8.5.32",
     "react": "19.2.7",
     "react-dom": "19.2.7",
+    "stripe": "22.2.1",
     "tailwindcss": "4.3.4",
     "web-push": "3.6.7",
     "zod": "4.6.7"

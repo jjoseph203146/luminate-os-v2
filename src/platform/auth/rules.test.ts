@@ -64,12 +64,12 @@ describe("safeNextPath", () => {
 
 describe("isPublicPath", () => {
   it("allows sign-in related pages and the job tick", () => {
-    for (const p of ["/login", "/forgot-password", "/session-expired", "/auth/confirm", "/api/jobs/tick", "/manifest.webmanifest", "/sw.js", "/logo.png", "/icons/icon-192.png", "/api/leads/create", "/api/mcp"]) {
+    for (const p of ["/login", "/forgot-password", "/session-expired", "/auth/confirm", "/api/jobs/tick", "/manifest.webmanifest", "/sw.js", "/logo.png", "/icons/icon-192.png", "/api/leads/create", "/api/mcp", "/api/webhooks/stripe"]) {
       expect(isPublicPath(p)).toBe(true);
     }
   });
   it("requires a session for everything else", () => {
-    for (const p of ["/", "/settings", "/settings/users", "/reset-password", "/mfa/enroll", "/mfa/challenge", "/access-denied", "/automations", "/api/jobs/other", "/api/mcp/other"]) {
+    for (const p of ["/", "/settings", "/settings/users", "/reset-password", "/mfa/enroll", "/mfa/challenge", "/access-denied", "/automations", "/api/jobs/other", "/api/mcp/other", "/api/webhooks", "/api/webhooks/sentry", "/api/webhooks/stripe/other", "/api/webhooks/stripex"]) {
       expect(isPublicPath(p)).toBe(false);
     }
   });

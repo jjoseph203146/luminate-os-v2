@@ -14,13 +14,23 @@ import * as repo from "./repo";
 import { scanUrl } from "./checks";
 import { buildMonitorRow, unreachable, withScheme } from "./scan-rules";
 import type { ScanTarget, UrlScan } from "./scan-types";
-import type { MonitoringOverview, ScanOutcome } from "./types";
+import type { MonitoringOverview, ScanOutcome, SiteVisual } from "./types";
+import { getPagespeedKey } from "@/platform/env";
+import { runPagespeed, screenshotDiff } from "./visual-checks";
+import { buildVisualErrorRow, buildVisualRow, pickDueSites, screenshotPath, type SpeedOutcome } from "./visual-rules";
 
 export async function getMonitoringOverview(actor: Actor): Promise<MonitoringOverview> {
   assertCan(actor, "monitoring.read");
   const db = await readDb(actor);
-  const [sites, issues, calendar] = await Promise.all([repo.listSites(db), repo.listOpenIssues(db), getCalendar(actor)]);
-  return { sites, issues, timeZone: calendar.timeZone, asOf: new Date().toISOString() };
+  const [sites, issues, calendar, visualRows] = await Promise.all([
+    repo.listSites(db),
+    repo.listOpenIssues(db),
+    getCalendar(actor),
+    // The speed checks are extra: if they cannot be read, the screen still shows the site checks.
+    repo.listVisualChecks(db).catch(() => [] as SiteVisual[]),
+  ]);
+  const visual = Object.fromEntries(visualRows.map((v) => [v.clientId, v]));
+  return { sites, issues, visual, timeZone: calendar.timeZone, asOf: new Date().toISOString() };
 }
 
 export interface AlertRunSummary {
@@ -216,4 +226,105 @@ export async function scanNow(actor: Owner, raw: unknown, clock: () => number = 
     /* already logged by writeAudit */
   }
   return { summary, outcomes };
+}
+
+// --- Speed and visual checks (the `visual_checks` job and "Check speed now") ------------------------------
+
+/** The job does not start a check with less than this left in the tick (one PageSpeed call can take 40 s). */
+export const VISUAL_MIN_TIME_MS = 45_000;
+
+export interface VisualRunSummary {
+  due: number;
+  checked: number;
+  failed: number;
+  /** Why nothing was checked this run, when that is the case. */
+  skipped: string | null;
+}
+
+/**
+ * Checks one site with PageSpeed Insights, compares the screenshot with the previous one, stores the new
+ * screenshot and writes site_visual_checks. Never throws: a failure is written as last_error (keeping the last good
+ * measurements) and returned.
+ */
+async function checkOneVisual(db: ReturnType<typeof createAdminClient>, target: ScanTarget, key: string | null, clock: () => number): Promise<SpeedOutcome> {
+  const result = await runPagespeed(target.url, key);
+  const checkedAt = new Date(clock());
+  if (!result.ok) {
+    try {
+      await repo.saveVisualCheck(db, buildVisualErrorRow(target, result.error, checkedAt));
+    } catch {
+      console.error("speed check save failed for client", target.clientId);
+    }
+    return { clientName: target.clientName, ok: false, score: null, lcpMs: null, diff: null, error: result.error };
+  }
+
+  let stored: { path: string | null; diff: number | null } = { path: null, diff: null };
+  if (result.screenshotBase64) {
+    const path = screenshotPath(target.clientId);
+    const bytes = new Uint8Array(Buffer.from(result.screenshotBase64, "base64"));
+    // The previous screenshot is read BEFORE the new one replaces it. A storage problem only loses the comparison.
+    const previous = await repo.downloadScreenshot(db, path).catch(() => null);
+    const diff = screenshotDiff(previous, bytes);
+    try {
+      await repo.uploadScreenshot(db, path, bytes);
+      stored = { path, diff };
+    } catch {
+      console.error("screenshot upload failed for client", target.clientId);
+      stored = { path: null, diff };
+    }
+  }
+
+  try {
+    await repo.saveVisualCheck(db, buildVisualRow(target, result, stored, checkedAt));
+  } catch {
+    console.error("speed check save failed for client", target.clientId);
+    return { clientName: target.clientName, ok: false, score: result.score, lcpMs: result.lcpMs, diff: stored.diff, error: "The result could not be saved." };
+  }
+  return { clientName: target.clientName, ok: true, score: result.score, lcpMs: result.lcpMs, diff: stored.diff, error: null };
+}
+
+/**
+ * The scheduled speed and visual check. Picks the sites whose last check is older than 12 hours (never-checked
+ * first, at most two per run) and checks them in parallel. Archived and paused clients are skipped, like the site
+ * scan. With too little time left in the tick it does nothing; a later tick does it.
+ */
+export async function runVisualChecks(actor: Actor, ctx: { now: Date; deadline: Date }, clock: () => number = Date.now): Promise<VisualRunSummary> {
+  assertCan(actor, "monitoring.scan");
+  if (ctx.deadline.getTime() - clock() < VISUAL_MIN_TIME_MS) return { due: 0, checked: 0, failed: 0, skipped: "not enough time this tick" };
+  const db = createAdminClient();
+  const targets = buildScanTargets(await repo.listScanCandidates(db));
+  const previous = await repo.getVisualPrevious(
+    db,
+    targets.map((t) => t.clientId),
+  );
+  const due = pickDueSites(targets, previous, ctx.now);
+  const key = getPagespeedKey();
+  const outcomes = await Promise.all(
+    due.map((t) =>
+      checkOneVisual(db, t, key, clock).catch(() => ({ clientName: t.clientName, ok: false, score: null, lcpMs: null, diff: null, error: "unexpected error" }) as SpeedOutcome),
+    ),
+  );
+  const checked = outcomes.filter((o) => o.ok).length;
+  return { due: due.length, checked, failed: outcomes.length - checked, skipped: null };
+}
+
+const speedNowSchema = z.object({ clientId: z.string().uuid("That site was not recognised.") });
+/** At most this many manual speed checks a minute: each one uses the PageSpeed quota. */
+const speedLimiter = createRateLimiter({ max: 6, windowMs: 60_000 });
+
+/** "Check speed now" for one site, from the Monitoring screen. Owner only. */
+export async function checkSpeedNow(actor: Owner, raw: unknown, clock: () => number = Date.now): Promise<SpeedOutcome> {
+  assertCan(actor, "monitoring.scan");
+  const { clientId } = parseInput(speedNowSchema, raw ?? {});
+  if (!speedLimiter.check(actor.userId, clock())) throw new RateLimitError("You just ran several speed checks. Wait a minute and try again.");
+  const db = createAdminClient();
+  const target = buildScanTargets(await repo.listScanCandidates(db)).find((t) => t.clientId === clientId);
+  if (!target) throw new RuleError("That site is not being monitored. It may be archived, paused, or have no website address.");
+  const outcome = await checkOneVisual(db, target, getPagespeedKey(), clock);
+  try {
+    await writeAudit(actor, { action: "visual_check.run_manual", entityType: "visual_check", entityId: clientId, clientId, after: { ok: outcome.ok, score: outcome.score } });
+  } catch {
+    /* already logged by writeAudit */
+  }
+  return outcome;
 }

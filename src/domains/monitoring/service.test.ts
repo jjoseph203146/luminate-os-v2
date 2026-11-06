@@ -12,6 +12,13 @@ const mocks = vi.hoisted(() => ({
   writeAudit: vi.fn(),
   scanUrl: vi.fn(),
   buildMonitorRow: vi.fn(),
+  listVisualChecks: vi.fn(),
+  getVisualPrevious: vi.fn(),
+  saveVisualCheck: vi.fn(),
+  downloadScreenshot: vi.fn(),
+  uploadScreenshot: vi.fn(),
+  runPagespeed: vi.fn(),
+  screenshotDiff: vi.fn(),
 }));
 
 vi.mock("@/platform/audit/audit", () => ({ writeAudit: mocks.writeAudit }));
@@ -24,7 +31,13 @@ vi.mock("./repo", () => ({
   listScanCandidates: mocks.listScanCandidates,
   getPreviousMonitors: mocks.getPreviousMonitors,
   saveScan: mocks.saveScan,
+  listVisualChecks: mocks.listVisualChecks,
+  getVisualPrevious: mocks.getVisualPrevious,
+  saveVisualCheck: mocks.saveVisualCheck,
+  downloadScreenshot: mocks.downloadScreenshot,
+  uploadScreenshot: mocks.uploadScreenshot,
 }));
+vi.mock("./visual-checks", () => ({ runPagespeed: mocks.runPagespeed, screenshotDiff: mocks.screenshotDiff }));
 vi.mock("./checks", () => ({ scanUrl: mocks.scanUrl }));
 vi.mock("./scan-rules", () => ({
   withScheme: (u: string) => (/^https?:\/\//i.test(u) ? u : `https://${u}`),
@@ -34,7 +47,7 @@ vi.mock("./scan-rules", () => ({
 vi.mock("@/domains/notifications/service", () => ({ notifyOwner: mocks.notifyOwner }));
 vi.mock("@/domains/admin/service", () => ({ getCalendar: vi.fn() }));
 
-import { buildScanTargets, isScannable, pickScanUrl, runMonitorAlerts, runSiteChecks, scanNow, SCAN_START_BUDGET_MS, SCAN_CONCURRENCY, SITE_SCAN_CAP_MS } from "./service";
+import { buildScanTargets, checkSpeedNow, isScannable, pickScanUrl, runMonitorAlerts, runSiteChecks, runVisualChecks, scanNow, VISUAL_MIN_TIME_MS, SCAN_START_BUDGET_MS, SCAN_CONCURRENCY, SITE_SCAN_CAP_MS } from "./service";
 import { PermissionError, RateLimitError, RuleError, ValidationError } from "@/platform/errors";
 
 const downSite = {
@@ -279,5 +292,118 @@ describe("scanNow (the Scan now buttons)", () => {
   it("is not allowed for the ai actor or a client", async () => {
     await expect(scanNow({ type: "ai", name: "mcp" } as never, {})).rejects.toBeInstanceOf(PermissionError);
     await expect(scanNow({ type: "client" } as never, {})).rejects.toBeInstanceOf(PermissionError);
+  });
+});
+
+describe("runVisualChecks (speed and visual job)", () => {
+  const system = { type: "system", name: "visual_checks" } as const;
+  const T0 = 1_000_000;
+  const clock = () => T0;
+  const ctx = { now: new Date(T0), deadline: new Date(T0 + 50_000) };
+  const good = { ok: true, score: 87, lcpMs: 2100, cls: 0.05, tbtMs: 150, screenshotBase64: Buffer.from("new-jpeg").toString("base64") };
+
+  beforeEach(() => {
+    mocks.listScanCandidates.mockResolvedValue([
+      candidate({ clientId: "c1", clientName: "Acme", projectUrl: "acme.com" }),
+      candidate({ clientId: "c2", clientName: "Beta", projectUrl: "beta.com" }),
+      candidate({ clientId: "c3", clientName: "Gone", projectUrl: "gone.com", archivedAt: "2026-01-01T00:00:00Z" }),
+      candidate({ clientId: "c4", clientName: "Fresh", projectUrl: "fresh.com" }),
+    ]);
+    mocks.getVisualPrevious.mockResolvedValue([{ clientId: "c4", lastCheckedAt: new Date(T0 - 3_600_000).toISOString() }]);
+    mocks.runPagespeed.mockResolvedValue(good);
+    mocks.downloadScreenshot.mockResolvedValue(new Uint8Array([1, 2, 3]));
+    mocks.uploadScreenshot.mockResolvedValue(undefined);
+    mocks.screenshotDiff.mockReturnValue(4.5);
+    mocks.saveVisualCheck.mockResolvedValue(undefined);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  it("checks the due sites (not archived, not recently checked), stores the screenshot and writes the row", async () => {
+    const r = await runVisualChecks(system, ctx, clock);
+    expect(r).toEqual({ due: 2, checked: 2, failed: 0, skipped: null });
+    expect(mocks.runPagespeed.mock.calls.map((c) => c[0]).sort()).toEqual(["https://acme.com", "https://beta.com"]);
+    expect(mocks.uploadScreenshot).toHaveBeenCalledWith({}, "c1/latest.jpg", new Uint8Array(Buffer.from("new-jpeg")));
+    expect(mocks.saveVisualCheck).toHaveBeenCalledWith({}, expect.objectContaining({ client_id: "c1", performance_score: 87, lcp_ms: 2100, cls: 0.05, tbt_ms: 150, screenshot_path: "c1/latest.jpg", diff_percent: 4.5, last_error: null }));
+  });
+  it("compares with the previous screenshot, read before the new one is stored", async () => {
+    const order: string[] = [];
+    mocks.downloadScreenshot.mockImplementation(async (_db: unknown, path: string) => (order.push(`download ${path}`), new Uint8Array([9])));
+    mocks.uploadScreenshot.mockImplementation(async (_db: unknown, path: string) => void order.push(`upload ${path}`));
+    await runVisualChecks(system, ctx, clock);
+    for (const path of ["c1/latest.jpg", "c2/latest.jpg"]) expect(order.indexOf(`download ${path}`)).toBeLessThan(order.indexOf(`upload ${path}`));
+    expect(order.filter((o) => o.startsWith("download"))).toHaveLength(2);
+    expect(mocks.screenshotDiff).toHaveBeenCalledWith(new Uint8Array([9]), new Uint8Array(Buffer.from("new-jpeg")));
+  });
+  it("does nothing when there is not enough time left in the tick", async () => {
+    const r = await runVisualChecks(system, { now: ctx.now, deadline: new Date(T0 + VISUAL_MIN_TIME_MS - 1) }, clock);
+    expect(r).toEqual({ due: 0, checked: 0, failed: 0, skipped: "not enough time this tick" });
+    expect(mocks.listScanCandidates).not.toHaveBeenCalled();
+    expect(mocks.runPagespeed).not.toHaveBeenCalled();
+  });
+  it("writes the error on a failed check, keeps going with the other site", async () => {
+    mocks.runPagespeed.mockImplementation(async (url: string) => (url.includes("acme") ? { ok: false, error: "quota used up" } : good));
+    const r = await runVisualChecks(system, ctx, clock);
+    expect(r).toMatchObject({ due: 2, checked: 1, failed: 1 });
+    expect(mocks.saveVisualCheck).toHaveBeenCalledWith({}, { client_id: "c1", url: "https://acme.com", last_checked_at: new Date(T0).toISOString(), last_error: "quota used up" });
+  });
+  it("still records the numbers when the screenshot cannot be stored or the old one read", async () => {
+    mocks.downloadScreenshot.mockRejectedValue(new Error("storage down"));
+    mocks.uploadScreenshot.mockRejectedValue(new Error("storage down"));
+    const r = await runVisualChecks(system, ctx, clock);
+    expect(r.checked).toBe(2);
+    expect(mocks.saveVisualCheck).toHaveBeenCalledWith({}, expect.objectContaining({ client_id: "c1", performance_score: 87, screenshot_path: null }));
+  });
+  it("counts a failed save as a failure without stopping the run", async () => {
+    mocks.saveVisualCheck.mockImplementation(async (_db: unknown, row: { client_id: string }) => {
+      if (row.client_id === "c1") throw new Error("db down");
+    });
+    expect(await runVisualChecks(system, ctx, clock)).toMatchObject({ checked: 1, failed: 1 });
+  });
+  it("is not allowed for the ai actor or a client", async () => {
+    await expect(runVisualChecks({ type: "ai", name: "mcp" }, ctx, clock)).rejects.toBeInstanceOf(PermissionError);
+    await expect(runVisualChecks({ type: "client" } as never, ctx, clock)).rejects.toBeInstanceOf(PermissionError);
+  });
+});
+
+describe("checkSpeedNow (the Check speed now button)", () => {
+  const owner = { type: "owner", userId: "owner-speed", email: null, ip: null } as const;
+  const A = "33333333-3333-4333-8333-333333333333";
+  const B = "44444444-4444-4444-8444-444444444444";
+  const good = { ok: true, score: 72, lcpMs: 3100, cls: 0.1, tbtMs: 300, screenshotBase64: null };
+
+  beforeEach(() => {
+    mocks.listScanCandidates.mockResolvedValue([candidate({ clientId: A, clientName: "Acme", projectUrl: "acme.com" }), candidate({ clientId: B, clientName: "Paused", projectUrl: "p.com", monitoringPausedAt: "2026-01-01T00:00:00Z" })]);
+    mocks.runPagespeed.mockResolvedValue(good);
+    mocks.saveVisualCheck.mockResolvedValue(undefined);
+    mocks.writeAudit.mockResolvedValue(undefined);
+  });
+
+  it("checks the one site and returns the outcome", async () => {
+    expect(await checkSpeedNow(owner, { clientId: A })).toEqual({ clientName: "Acme", ok: true, score: 72, lcpMs: 3100, diff: null, error: null });
+    expect(mocks.runPagespeed).toHaveBeenCalledTimes(1);
+    expect(mocks.uploadScreenshot).not.toHaveBeenCalled();
+  });
+  it("refuses a site that is not monitored, and a bad id, without calling PageSpeed", async () => {
+    await expect(checkSpeedNow(owner, { clientId: B })).rejects.toBeInstanceOf(RuleError);
+    await expect(checkSpeedNow(owner, { clientId: "nope" })).rejects.toBeInstanceOf(ValidationError);
+    await expect(checkSpeedNow(owner, {})).rejects.toBeInstanceOf(ValidationError);
+    expect(mocks.runPagespeed).not.toHaveBeenCalled();
+  });
+  it("writes an audit row, and still answers if the audit write fails", async () => {
+    await checkSpeedNow(owner, { clientId: A });
+    expect(mocks.writeAudit).toHaveBeenCalledWith(owner, expect.objectContaining({ action: "visual_check.run_manual", entityId: A, clientId: A }));
+    mocks.writeAudit.mockRejectedValue(new Error("audit down"));
+    await expect(checkSpeedNow(owner, { clientId: A })).resolves.toMatchObject({ ok: true });
+  });
+  it("limits manual speed checks to six a minute per owner", async () => {
+    const who = { ...owner, userId: "speed-limited" };
+    const t = 9_000_000;
+    for (let i = 0; i < 6; i++) await checkSpeedNow(who, { clientId: A }, () => t);
+    await expect(checkSpeedNow(who, { clientId: A }, () => t)).rejects.toBeInstanceOf(RateLimitError);
+    await expect(checkSpeedNow(who, { clientId: A }, () => t + 61_000)).resolves.toBeDefined();
+  });
+  it("is not allowed for the ai actor or a client", async () => {
+    await expect(checkSpeedNow({ type: "ai", name: "mcp" } as never, { clientId: A })).rejects.toBeInstanceOf(PermissionError);
+    await expect(checkSpeedNow({ type: "client" } as never, { clientId: A })).rejects.toBeInstanceOf(PermissionError);
   });
 });

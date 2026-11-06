@@ -1,9 +1,10 @@
+import { after } from "next/server";
 import { tick } from "@/domains/automation/service";
 import { getCronSecret } from "@/platform/env";
 import { tickAuthorized } from "@/platform/jobs/auth";
 
 export const dynamic = "force-dynamic";
-// The site scan job checks every client site inside one tick, so the function needs more than the default time.
+// The jobs run after the response (see below) but inside this function's time limit.
 export const maxDuration = 60;
 
 // The one scheduler entry point (docs/architecture/04 s5). Vercel Cron calls
@@ -14,12 +15,17 @@ async function handle(request: Request): Promise<Response> {
   if (!tickAuthorized(request.headers.get("authorization"), secret)) {
     return Response.json({ error: "Unauthorized." }, { status: 401 });
   }
-  try {
-    return Response.json(await tick({ type: "system", name: "scheduler" }));
-  } catch (e) {
-    console.error("tick failed", e);
-    return Response.json({ error: "Tick failed." }, { status: 500 });
-  }
+  // Answer at once and do the work after the response: the jobs (site checks, speed checks) can take longer
+  // than a scheduler waits (cron-job.org's free plan waits 30 s), and a slow answer would look like a failure.
+  // Results are recorded per job and shown on the Automations page.
+  after(async () => {
+    try {
+      await tick({ type: "system", name: "scheduler" });
+    } catch (e) {
+      console.error("tick failed", e instanceof Error ? e.message : "unknown error");
+    }
+  });
+  return Response.json({ accepted: true }, { status: 202 });
 }
 
 export const GET = handle;

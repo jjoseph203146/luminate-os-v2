@@ -4,8 +4,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
 import { asStatus } from "./rules";
-import type { AlertStateRow, SiteIssue, SiteMonitor } from "./types";
+import type { AlertStateRow, SiteIssue, SiteMonitor, SiteVisual } from "./types";
 import type { CheckRowInsert, MonitorRowInsert, PreviousMonitor } from "./scan-types";
+import { SCREENSHOT_BUCKET, type VisualPrevious, type VisualRowInsert } from "./visual-rules";
 
 type Db = SupabaseClient<Database>;
 
@@ -17,7 +18,7 @@ export async function listSites(db: Db): Promise<SiteMonitor[]> {
   if (error || !monitors) throw new Error("Could not read site checks");
   const ids = [...new Set(monitors.map((m) => m.client_id))];
   const names = new Map<string, string>();
-  const muted = new Set<string>();
+  const muted = new Map<string, "archived" | "paused" | "on_hold">();
   if (ids.length > 0) {
     const { data: clients, error: e2 } = await db
       .from("clients")
@@ -26,7 +27,8 @@ export async function listSites(db: Db): Promise<SiteMonitor[]> {
     if (e2 || !clients) throw new Error("Could not read clients");
     for (const c of clients) {
       names.set(c.id, c.business_name);
-      if (c.archived_at || c.on_hold_since || c.monitoring_paused_at) muted.add(c.id);
+      const reason = c.archived_at ? "archived" : c.monitoring_paused_at ? "paused" : c.on_hold_since ? "on_hold" : null;
+      if (reason) muted.set(c.id, reason);
     }
   }
   return monitors.map((m) => ({
@@ -44,6 +46,7 @@ export async function listSites(db: Db): Promise<SiteMonitor[]> {
     lastCheckedAt: m.last_checked_at,
     lastError: m.last_error,
     alertsMuted: muted.has(m.client_id),
+    ...(muted.has(m.client_id) ? { muteReason: muted.get(m.client_id) } : {}),
   }));
 }
 
@@ -144,4 +147,54 @@ export async function saveScan(db: Db, monitor: MonitorRowInsert, check: CheckRo
   if (latest.error) throw new Error("Could not save the site check");
   const history = await db.from("site_monitor_checks").insert(check);
   if (history.error) throw new Error("Could not save the check history");
+}
+
+// --- Speed and visual checks (site_visual_checks + the site-screenshots bucket) ------------------------
+
+/** The latest speed and visual check per client, for the Monitoring screen. */
+export async function listVisualChecks(db: Db): Promise<SiteVisual[]> {
+  const { data, error } = await db
+    .from("site_visual_checks")
+    .select("client_id,performance_score,lcp_ms,cls,tbt_ms,diff_percent,last_checked_at,last_error")
+    .limit(500);
+  if (error || !data) throw new Error("Could not read speed checks");
+  return data.map((v) => ({
+    clientId: v.client_id,
+    performanceScore: v.performance_score,
+    lcpMs: v.lcp_ms,
+    cls: v.cls === null ? null : Number(v.cls),
+    tbtMs: v.tbt_ms,
+    diffPercent: v.diff_percent === null ? null : Number(v.diff_percent),
+    lastCheckedAt: v.last_checked_at,
+    lastError: v.last_error,
+  }));
+}
+
+/** When each client's speed check last ran, to decide which sites are due. */
+export async function getVisualPrevious(db: Db, clientIds: string[]): Promise<VisualPrevious[]> {
+  const out: VisualPrevious[] = [];
+  for (const part of chunks(clientIds)) {
+    const { data, error } = await db.from("site_visual_checks").select("client_id,last_checked_at").in("client_id", part);
+    if (error || !data) throw new Error("Could not read speed checks");
+    for (const v of data) out.push({ clientId: v.client_id, lastCheckedAt: v.last_checked_at });
+  }
+  return out;
+}
+
+/** One row per client (upsert on client_id). Only the columns given are written, so an error row keeps the last good values. */
+export async function saveVisualCheck(db: Db, row: VisualRowInsert): Promise<void> {
+  const { error } = await db.from("site_visual_checks").upsert(row, { onConflict: "client_id" });
+  if (error) throw new Error("Could not save the speed check");
+}
+
+/** The stored screenshot, or null when there is none (or it cannot be read). */
+export async function downloadScreenshot(db: Db, path: string): Promise<Uint8Array | null> {
+  const { data, error } = await db.storage.from(SCREENSHOT_BUCKET).download(path);
+  if (error || !data) return null;
+  return new Uint8Array(await data.arrayBuffer());
+}
+
+export async function uploadScreenshot(db: Db, path: string, bytes: Uint8Array): Promise<void> {
+  const { error } = await db.storage.from(SCREENSHOT_BUCKET).upload(path, bytes, { contentType: "image/jpeg", upsert: true });
+  if (error) throw new Error("Could not store the screenshot");
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { runDueJobs, runJobNow, type ClaimResult, type JobRecord, type JobStore } from "./runner";
+import { runDueJobs, runJobNow, TICK_BUDGET_MS, type ClaimResult, type JobContext, type JobRecord, type JobStore } from "./runner";
 import { reclaimDecision } from "./rules";
 
 interface Run {
@@ -127,5 +127,27 @@ describe("runJobNow", () => {
   it("reports an unknown job", async () => {
     const { store } = fakeStore([heartbeat()]);
     expect(await runJobNow({ store, handlers: {} }, "nope")).toEqual({ job: "nope", outcome: "skipped", reason: "unknown job" });
+  });
+});
+
+describe("the tick time budget", () => {
+  it("gives every job the same deadline, the tick start plus the budget, so a later job can see how much time is left", async () => {
+    const start = new Date("2026-11-06T12:00:00Z");
+    const a: JobRecord = { key: "a_job", name: "A", intervalMinutes: 5, enabled: true, lastRunAt: null };
+    const b: JobRecord = { key: "b_job", name: "B", intervalMinutes: 5, enabled: true, lastRunAt: null };
+    const { store } = fakeStore([a, b]);
+    const seen: JobContext[] = [];
+    const handlers = { a_job: async (ctx: JobContext) => void seen.push(ctx), b_job: async (ctx: JobContext) => void seen.push(ctx) };
+    await runDueJobs({ store, handlers, clock: () => start });
+    expect(seen).toHaveLength(2);
+    for (const ctx of seen) expect(ctx.deadline.getTime()).toBe(start.getTime() + TICK_BUDGET_MS);
+    expect(TICK_BUDGET_MS).toBeLessThan(60_000);
+  });
+  it("gives a manual run the same budget", async () => {
+    const start = new Date("2026-11-06T12:00:00Z");
+    const { store } = fakeStore([heartbeat()]);
+    let deadline: Date | null = null;
+    await runJobNow({ store, handlers: { heartbeat: async (ctx: JobContext) => void (deadline = ctx.deadline) }, clock: () => start }, "heartbeat");
+    expect(deadline).toEqual(new Date(start.getTime() + TICK_BUDGET_MS));
   });
 });
