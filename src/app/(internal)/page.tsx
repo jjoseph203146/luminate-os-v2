@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { requireOwner } from "@/platform/auth/actor";
 import { getToday } from "@/domains/today/service";
+import { getBillingToday } from "@/domains/renewals/service";
+import type { BillingHealth } from "@/domains/renewals/types";
+import { BillingTaskRow } from "./_billing/BillingTasks";
 import { ageLabel, formatMoney } from "@/domains/clients/rules";
 import type { AttentionKind } from "@/domains/today/types";
 import { Icon, type IconName } from "@/ui/Icon";
@@ -46,9 +49,18 @@ function dueLabel(iso: string | null): string {
   return new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1)).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
+/** Why billing tasks may be missing or late. Shown on Today, never hidden. */
+function healthMessage(h: BillingHealth, available: boolean): string {
+  if (!available) return "Billing tasks are unavailable: the billing tables could not be read (database migration 0009 may not be applied).";
+  if (h.state === "not_set_up") return "The billing job is not set up or is switched off, so no billing tasks are being created.";
+  if (h.state === "never") return "The billing job has not run yet, so billing tasks may be missing.";
+  if (h.state === "failing") return "The billing job's last run failed. It retries by itself; billing tasks may be missing until it succeeds.";
+  return "The billing job has not run for over 3 hours, so billing tasks may be out of date.";
+}
+
 export default async function TodayPage() {
   const actor = await requireOwner();
-  const data = await getToday(actor);
+  const [data, billing] = await Promise.all([getToday(actor), getBillingToday(actor)]);
   const now = new Date(data.generatedAt);
   const r = data.revenue;
 
@@ -120,6 +132,38 @@ export default async function TodayPage() {
             </Group>
             {data.attentionTotal > data.attention.length && (
               <p className="mx-0.5 mt-2 text-[12px] text-dim">Showing the {data.attention.length} most urgent of {data.attentionTotal}.</p>
+            )}
+          </section>
+
+          <section>
+            <SectionHead title="Billing" count={billing.tasks.length} countTone={billing.tasks.some((t) => t.overdue) ? "text-red" : "text-dim"} />
+            {billing.health.state !== "ok" && (
+              <div role="alert" className="mb-2 flex items-start gap-2.5 rounded-xl bg-red-soft px-3.5 py-3 text-[13px] leading-[1.45] text-red">
+                <Icon name="sync_problem" size={18} />
+                <span>
+                  {healthMessage(billing.health, billing.available)}{" "}
+                  <Link href="/automations" className="font-semibold underline">Open Automations</Link>
+                </span>
+              </div>
+            )}
+            <Group>
+              {billing.tasks.length === 0 ? (
+                <EmptyNote>{billing.available ? "No billing tasks due. Renewal tasks appear 5 days before each client's renewal date." : "Billing tasks are unavailable."}</EmptyNote>
+              ) : (
+                billing.tasks.map((t) => <BillingTaskRow key={t.actionId} task={t} />)
+              )}
+            </Group>
+            {billing.missingSchedules.length > 0 && (
+              <p className="mx-0.5 mt-2 text-[12px] leading-[1.5] text-dim">
+                No billing schedule yet, so no billing tasks for:{" "}
+                {billing.missingSchedules.map((c, i) => (
+                  <span key={c.clientId}>
+                    {i > 0 && ", "}
+                    <Link href={`/clients/${c.clientId}?tab=billing`} className="font-medium text-blue">{c.clientName}</Link>
+                  </span>
+                ))}
+                .
+              </p>
             )}
           </section>
 

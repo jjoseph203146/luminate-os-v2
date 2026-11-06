@@ -258,6 +258,186 @@ export type Database = {
         }
         Relationships: []
       }
+      billing_actions: {
+        Row: {
+          action_key: string
+          client_id: string
+          completed_at: string | null
+          completed_by: string | null
+          created_at: string
+          cycle_id: string
+          due_on: string
+          id: string
+          milestone: string
+          outcome: string | null
+          status: string
+          updated_at: string
+          work_item_id: string | null
+        }
+        Insert: {
+          action_key: string
+          client_id: string
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          cycle_id: string
+          due_on: string
+          id?: string
+          milestone: string
+          outcome?: string | null
+          status?: string
+          updated_at?: string
+          work_item_id?: string | null
+        }
+        Update: {
+          action_key?: string
+          client_id?: string
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          cycle_id?: string
+          due_on?: string
+          id?: string
+          milestone?: string
+          outcome?: string | null
+          status?: string
+          updated_at?: string
+          work_item_id?: string | null
+        }
+        Relationships: []
+      }
+      billing_cycles: {
+        Row: {
+          agreement_id: string
+          amount_cents: number
+          cancelled_reason: string | null
+          client_id: string
+          created_at: string
+          due_on: string
+          id: string
+          invoice_sender: string
+          invoice_sent_at: string | null
+          invoice_sent_by: string | null
+          invoice_url: string | null
+          manual_amount_cents: number | null
+          manual_method: string | null
+          manual_note: string | null
+          manual_recorded_at: string | null
+          manual_recorded_by: string | null
+          paid_at: string | null
+          payment_ref: string | null
+          plan_name: string | null
+          reminder_sent_at: string | null
+          reminder_sent_by: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          agreement_id: string
+          amount_cents: number
+          cancelled_reason?: string | null
+          client_id: string
+          created_at?: string
+          due_on: string
+          id?: string
+          invoice_sender: string
+          invoice_sent_at?: string | null
+          invoice_sent_by?: string | null
+          invoice_url?: string | null
+          manual_amount_cents?: number | null
+          manual_method?: string | null
+          manual_note?: string | null
+          manual_recorded_at?: string | null
+          manual_recorded_by?: string | null
+          paid_at?: string | null
+          payment_ref?: string | null
+          plan_name?: string | null
+          reminder_sent_at?: string | null
+          reminder_sent_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          agreement_id?: string
+          amount_cents?: number
+          cancelled_reason?: string | null
+          client_id?: string
+          created_at?: string
+          due_on?: string
+          id?: string
+          invoice_sender?: string
+          invoice_sent_at?: string | null
+          invoice_sent_by?: string | null
+          invoice_url?: string | null
+          manual_amount_cents?: number | null
+          manual_method?: string | null
+          manual_note?: string | null
+          manual_recorded_at?: string | null
+          manual_recorded_by?: string | null
+          paid_at?: string | null
+          payment_ref?: string | null
+          plan_name?: string | null
+          reminder_sent_at?: string | null
+          reminder_sent_by?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      care_agreements: {
+        Row: {
+          anniversary_day: number
+          cancelled_at: string | null
+          client_id: string
+          created_at: string
+          id: string
+          invoice_sender: string
+          monthly_price_cents: number
+          paused_at: string | null
+          payment_link_url: string | null
+          plan_name: string | null
+          starts_on: string
+          status: string
+          tasks_from: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          anniversary_day: number
+          cancelled_at?: string | null
+          client_id: string
+          created_at?: string
+          id?: string
+          invoice_sender?: string
+          monthly_price_cents: number
+          paused_at?: string | null
+          payment_link_url?: string | null
+          plan_name?: string | null
+          starts_on: string
+          status?: string
+          tasks_from?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          anniversary_day?: number
+          cancelled_at?: string | null
+          client_id?: string
+          created_at?: string
+          id?: string
+          invoice_sender?: string
+          monthly_price_cents?: number
+          paused_at?: string | null
+          payment_link_url?: string | null
+          plan_name?: string | null
+          starts_on?: string
+          status?: string
+          tasks_from?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       care_plan_templates: {
         Row: {
           active: boolean

@@ -36,7 +36,7 @@ export async function loadTodayInputs(db: Db, since: string): Promise<AttentionI
       .limit(300),
     db
       .from("internal_work_items")
-      .select("id,client_id,title,status,priority,due_date,updated_at")
+      .select("id,client_id,title,status,priority,due_date,updated_at,source_reference")
       .neq("status", "completed")
       .limit(300),
     db.from("projects").select("id,client_id,name,blocker_note,updated_at").not("blocker_note", "is", null).limit(100),

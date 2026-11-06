@@ -53,6 +53,12 @@ describe("nextBillingDate (all UTC)", () => {
     expect(nextBillingDate(anchor, new Date("2026-11-06T12:00:00Z"))).toBe("2026-11-20");
     expect(nextBillingDate(anchor, new Date("2026-11-25T12:00:00Z"))).toBe("2026-12-20");
   });
+  it("uses the last day of a shorter month instead of spilling into the next one", () => {
+    const the31st = sec("2026-01-31T12:00:00Z");
+    expect(nextBillingDate(the31st, new Date("2027-02-10T00:00:00Z"))).toBe("2027-02-28");
+    expect(nextBillingDate(the31st, new Date("2028-02-10T00:00:00Z"))).toBe("2028-02-29");
+    expect(nextBillingDate(the31st, new Date("2026-04-30T12:00:00Z"))).toBe("2026-05-31");
+  });
   it("rolls over the year in December", () => {
     expect(nextBillingDate(sec("2026-01-05T00:00:00Z"), new Date("2026-12-10T00:00:00Z"))).toBe("2027-01-05");
   });

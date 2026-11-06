@@ -31,6 +31,10 @@ export const PERMISSIONS = [
   "billing.sync",
   /** The Money page: payments, MRR, overdue and paused (read only). */
   "money.read",
+  /** SOP billing tasks: billing schedules, renewals, Mark sent / reminder sent, manual payments. */
+  "billing.tasks",
+  /** The billing job: creates and closes billing tasks. Never sends anything. */
+  "billing.schedule",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -39,7 +43,7 @@ export type Permission = (typeof PERMISSIONS)[number];
 // actors are designed but switched off (docs/architecture/04 s3).
 const GRANTS: Record<ActorType, readonly Permission[]> = {
   owner: PERMISSIONS,
-  system: ["jobs.read", "jobs.run", "growth.intake", "notifications.send", "monitoring.read", "monitoring.scan", "alerts.run"],
+  system: ["jobs.read", "jobs.run", "growth.intake", "notifications.send", "monitoring.read", "monitoring.scan", "alerts.run", "billing.schedule"],
   contractor: [],
   client: [],
   // The Stripe webhook: records customers, payments and subscription state. Nothing else.
