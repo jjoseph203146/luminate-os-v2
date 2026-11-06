@@ -34,9 +34,23 @@ export interface SiteIssue {
   webUrl: string | null;
 }
 
+/** The latest speed and visual check of one site (site_visual_checks). */
+export interface SiteVisual {
+  clientId: string;
+  performanceScore: number | null;
+  lcpMs: number | null;
+  cls: number | null;
+  tbtMs: number | null;
+  diffPercent: number | null;
+  lastCheckedAt: string | null;
+  lastError: string | null;
+}
+
 export interface MonitoringOverview {
   sites: SiteMonitor[];
   issues: SiteIssue[];
+  /** Speed and visual checks by client id. Missing when not read. */
+  visual?: Record<string, SiteVisual>;
   timeZone: string;
   /** Wall-clock time the page was built, ISO. */
   asOf: string;

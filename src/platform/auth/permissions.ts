@@ -21,6 +21,7 @@ export const PERMISSIONS = [
   "alerts.run",
   "assistant.read",
   "calendar.read",
+  "billing.ingest",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -32,7 +33,8 @@ const GRANTS: Record<ActorType, readonly Permission[]> = {
   system: ["jobs.read", "jobs.run", "growth.intake", "notifications.send", "monitoring.read", "monitoring.scan", "alerts.run"],
   contractor: [],
   client: [],
-  integration: [],
+  // The Stripe webhook: records customers, payments and subscription state. Nothing else.
+  integration: ["billing.ingest"],
   // Read only. The ai actor reaches services only through the fixed tool list in domains/assistant,
   // and every tool returns an explicit set of fields (no contact details, notes or ids from other systems).
   ai: ["assistant.read", "clients.read", "work.read", "growth.read", "monitoring.read", "calendar.read"],

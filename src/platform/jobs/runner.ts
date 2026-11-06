@@ -26,7 +26,15 @@ export interface JobContext {
   now: Date;
   runId: string;
   attempt: number;
+  /**
+   * When the whole tick must be finished by (the function's time limit, minus a margin). Jobs run one after
+   * another in one tick, so a slow job should check this before starting slow work and leave it for its next run.
+   */
+  deadline: Date;
 }
+
+/** All jobs of one tick share this budget; the route's maxDuration is 60 s. */
+export const TICK_BUDGET_MS = 50_000;
 
 export type JobHandler = (ctx: JobContext) => Promise<Record<string, unknown> | void>;
 
@@ -65,7 +73,7 @@ async function execute(
   if (!claim.claimed) return { job: job.key, outcome: "skipped", reason: claim.reason };
 
   try {
-    const result = await handler({ now, runId: claim.runId, attempt: claim.attempts });
+    const result = await handler({ now, runId: claim.runId, attempt: claim.attempts, deadline: new Date(now.getTime() + TICK_BUDGET_MS) });
     await deps.store.finish({
       runId: claim.runId,
       jobKey: job.key,

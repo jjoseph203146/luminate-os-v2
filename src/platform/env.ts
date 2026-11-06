@@ -80,6 +80,32 @@ export function getPushConfig(source: NodeJS.ProcessEnv = process.env): PushConf
   return r.success ? { publicKey: r.data.VAPID_PUBLIC_KEY, privateKey: r.data.VAPID_PRIVATE_KEY, subject: r.data.VAPID_SUBJECT } : null;
 }
 
+export interface StripeConfig {
+  secretKey: string;
+  /** Signing secret of the LIVE webhook endpoint. */
+  webhookSecret: string | null;
+  /** Signing secret of a TEST-mode webhook endpoint (optional). */
+  webhookSecretTest: string | null;
+}
+
+const stripeKeySchema = z.string().regex(/^(sk|rk)_(live|test)_[A-Za-z0-9]{10,}$/, "must be a Stripe secret or restricted key");
+const whsecSchema = z.string().regex(/^whsec_[A-Za-z0-9]{10,}$/, "must be a Stripe webhook signing secret");
+
+/** Null when Stripe is not configured (the webhook then refuses every request). Never prints values. */
+export function getStripeConfig(source: NodeJS.ProcessEnv = process.env): StripeConfig | null {
+  const key = stripeKeySchema.safeParse(source.STRIPE_SECRET_KEY?.trim());
+  if (!key.success) return null;
+  const live = whsecSchema.safeParse(source.STRIPE_WEBHOOK_SECRET?.trim());
+  const test = whsecSchema.safeParse(source.STRIPE_WEBHOOK_SECRET_TEST?.trim());
+  return { secretKey: key.data, webhookSecret: live.success ? live.data : null, webhookSecretTest: test.success ? test.data : null };
+}
+
+/** Google API key for PageSpeed Insights (speed and visual checks). Null when unset: the checks then run without a key (low shared quota). */
+export function getPagespeedKey(source: NodeJS.ProcessEnv = process.env): string | null {
+  const v = source.PAGESPEED_API_KEY?.trim();
+  return v && v.length >= 20 ? v : null;
+}
+
 const DEFAULT_LEAD_ORIGINS = ["https://luminatewebdesign.com", "https://www.luminatewebdesign.com"];
 
 /** Websites allowed to post the contact form. Comma-separated LEAD_FORM_ORIGINS overrides the default. */
@@ -124,6 +150,10 @@ export function envChecks(source: NodeJS.ProcessEnv = process.env): EnvCheck[] {
     { name: "VAPID_PRIVATE_KEY", required: false },
     { name: "VAPID_SUBJECT", required: false },
     { name: "LEAD_FORM_ORIGINS", required: false },
+    { name: "STRIPE_SECRET_KEY", required: false },
+    { name: "STRIPE_WEBHOOK_SECRET", required: false },
+    { name: "STRIPE_WEBHOOK_SECRET_TEST", required: false },
+    { name: "PAGESPEED_API_KEY", required: false },
     { name: "MCP_API_KEY", required: false },
   ].map((c) => ({ ...c, present: has(c.name) }));
 }

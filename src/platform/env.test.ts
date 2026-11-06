@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { envChecks, EnvError, getAppSettings, getCronSecret, getMcpKey, getPublicEnv } from "./env";
+import { envChecks, EnvError, getAppSettings, getCronSecret, getMcpKey, getPublicEnv, getStripeConfig, getPagespeedKey } from "./env";
 
 const good = {
   NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
@@ -46,5 +46,35 @@ describe("env", () => {
     expect(checks.find((c) => c.name === "CRON_SECRET")?.present).toBe(true);
     expect(checks.find((c) => c.name === "APP_URL")?.present).toBe(false);
     expect(JSON.stringify(checks)).not.toContain("secret-value");
+  });
+});
+
+describe("getStripeConfig", () => {
+  const key = `sk_test_${"x".repeat(24)}`;
+  const whsec = `whsec_${"y".repeat(24)}`;
+  it("is null without a valid secret or restricted key, so the webhook refuses everything", () => {
+    expect(getStripeConfig({} as NodeJS.ProcessEnv)).toBeNull();
+    expect(getStripeConfig({ STRIPE_SECRET_KEY: "pk_live_notasecret1234567890" } as NodeJS.ProcessEnv)).toBeNull();
+    expect(getStripeConfig({ STRIPE_SECRET_KEY: "nonsense" } as NodeJS.ProcessEnv)).toBeNull();
+  });
+  it("accepts a secret or restricted key, with optional live and test signing secrets", () => {
+    expect(getStripeConfig({ STRIPE_SECRET_KEY: key } as NodeJS.ProcessEnv)).toEqual({ secretKey: key, webhookSecret: null, webhookSecretTest: null });
+    const restricted = `rk_live_${"z".repeat(24)}`;
+    expect(getStripeConfig({ STRIPE_SECRET_KEY: ` ${restricted} `, STRIPE_WEBHOOK_SECRET: whsec, STRIPE_WEBHOOK_SECRET_TEST: whsec } as NodeJS.ProcessEnv)).toEqual({
+      secretKey: restricted,
+      webhookSecret: whsec,
+      webhookSecretTest: whsec,
+    });
+  });
+  it("ignores a malformed signing secret instead of trusting it", () => {
+    expect(getStripeConfig({ STRIPE_SECRET_KEY: key, STRIPE_WEBHOOK_SECRET: "secret" } as NodeJS.ProcessEnv)?.webhookSecret).toBeNull();
+  });
+});
+
+describe("getPagespeedKey", () => {
+  it("returns a plausible key and null otherwise", () => {
+    expect(getPagespeedKey({} as NodeJS.ProcessEnv)).toBeNull();
+    expect(getPagespeedKey({ PAGESPEED_API_KEY: "short" } as NodeJS.ProcessEnv)).toBeNull();
+    expect(getPagespeedKey({ PAGESPEED_API_KEY: ` ${"A".repeat(39)} ` } as NodeJS.ProcessEnv)).toBe("A".repeat(39));
   });
 });
