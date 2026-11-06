@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { assertCan } from "@/platform/auth/permissions";
 import type { Actor } from "@/platform/auth/types";
-import { createUserClient } from "@/platform/db/server";
+import { readDb } from "@/platform/db/server";
 import { cleanSearch, parseStatusFilter } from "./rules";
 import * as repo from "./repo";
 import type { ClientListItem, ClientWorkspace } from "./types";
@@ -15,7 +15,7 @@ export async function listClients(
   input: { search?: string | null; status?: string | null; includeArchived?: boolean },
 ): Promise<ClientListItem[]> {
   assertCan(actor, "clients.read");
-  const db = await createUserClient();
+  const db = await readDb(actor);
   return repo.listClients(
     db,
     {
@@ -32,6 +32,6 @@ export async function getClientWorkspace(actor: Actor, id: string): Promise<Clie
   assertCan(actor, "clients.read");
   const parsed = idSchema.safeParse(id);
   if (!parsed.success) return null;
-  const db = await createUserClient();
+  const db = await readDb(actor);
   return repo.getClientWorkspace(db, parsed.data, new Date());
 }

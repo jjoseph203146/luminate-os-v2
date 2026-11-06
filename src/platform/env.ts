@@ -52,6 +52,16 @@ export function getCronSecret(source: NodeJS.ProcessEnv = process.env): string |
   return r.success ? r.data.CRON_SECRET : null;
 }
 
+const mcpSchema = z.object({
+  MCP_API_KEY: z.string().min(32),
+});
+
+/** The key the AI assistant connector (/api/mcp) accepts. Null when unset or shorter than 32 characters: the connector is then off. */
+export function getMcpKey(source: NodeJS.ProcessEnv = process.env): string | null {
+  const r = mcpSchema.safeParse(source);
+  return r.success ? r.data.MCP_API_KEY : null;
+}
+
 const pushSchema = z.object({
   VAPID_PUBLIC_KEY: z.string().min(40),
   VAPID_PRIVATE_KEY: z.string().min(20),
@@ -114,5 +124,6 @@ export function envChecks(source: NodeJS.ProcessEnv = process.env): EnvCheck[] {
     { name: "VAPID_PRIVATE_KEY", required: false },
     { name: "VAPID_SUBJECT", required: false },
     { name: "LEAD_FORM_ORIGINS", required: false },
+    { name: "MCP_API_KEY", required: false },
   ].map((c) => ({ ...c, present: has(c.name) }));
 }

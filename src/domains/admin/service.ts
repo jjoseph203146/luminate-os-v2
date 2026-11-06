@@ -4,7 +4,7 @@ import { assertCan } from "@/platform/auth/permissions";
 import type { Actor } from "@/platform/auth/types";
 import { parseInput } from "@/platform/auth/schemas";
 import { writeAudit } from "@/platform/audit/audit";
-import { createAdminClient, createUserClient } from "@/platform/db/server";
+import { createAdminClient, createUserClient, readDb } from "@/platform/db/server";
 import { envChecks, getAppSettings } from "@/platform/env";
 import { RuleError } from "@/platform/errors";
 import { freshness } from "@/platform/jobs/rules";
@@ -65,8 +65,9 @@ export async function updateBusinessProfile(actor: Owner, raw: unknown): Promise
 // --- business calendar -----------------------------------------------------
 
 export async function getCalendar(actor: Actor): Promise<BusinessCalendar> {
-  assertCan(actor, "settings.read");
-  return repo.getCalendar(await createUserClient());
+  // calendar.read, not settings.read: the AI assistant needs the time zone to say what "today" is, and nothing else in Settings.
+  assertCan(actor, "calendar.read");
+  return repo.getCalendar(await readDb(actor));
 }
 
 export async function updateCalendar(actor: Owner, raw: unknown): Promise<void> {

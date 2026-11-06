@@ -27,6 +27,19 @@ export async function createUserClient() {
 }
 
 /**
+ * The database client for a READ on behalf of this actor.
+ * - owner: the signed-in user's client, so row-level security applies.
+ * - ai, system: no session exists, so the service-role client is used. Callers must check the actor's
+ *   permission first (assertCan), and the ai actor only reaches these reads through the fixed,
+ *   read-only tool list in domains/assistant.
+ */
+export async function readDb(actor: { type: string }) {
+  if (actor.type === "owner") return createUserClient();
+  if (actor.type === "ai" || actor.type === "system") return createAdminClient();
+  throw new Error("This actor cannot read data");
+}
+
+/**
  * Service-role client. Bypasses row-level security, so it is used only by
  * platform code (audit writes, jobs, user administration), always with an
  * explicit actor, and never for reads on behalf of a page.

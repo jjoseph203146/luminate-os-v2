@@ -5,7 +5,7 @@ import type { Actor } from "@/platform/auth/types";
 import { parseInput } from "@/platform/auth/schemas";
 import { writeAudit } from "@/platform/audit/audit";
 import { toLocalDate } from "@/platform/calendar/business-days";
-import { createUserClient } from "@/platform/db/server";
+import { createUserClient, readDb } from "@/platform/db/server";
 import { RuleError } from "@/platform/errors";
 import { getCalendar } from "@/domains/admin/service";
 import { completionFields, duplicateWindowStart, taskSourceReference } from "./rules";
@@ -19,7 +19,7 @@ export async function getWorkOverview(actor: Actor): Promise<WorkOverview> {
   assertCan(actor, "work.read");
   const { timeZone } = await getCalendar(actor);
   const today = toLocalDate(new Date(), timeZone);
-  const db = await createUserClient();
+  const db = await readDb(actor);
   const [tasks, requests, projects] = await Promise.all([repo.listOpenTasks(db, today), repo.listOpenRequests(db), repo.listProjects(db)]);
   return { today, tasks, requests, projects };
 }

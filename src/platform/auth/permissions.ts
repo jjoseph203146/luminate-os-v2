@@ -18,6 +18,8 @@ export const PERMISSIONS = [
   "notifications.send",
   "monitoring.read",
   "alerts.run",
+  "assistant.read",
+  "calendar.read",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -30,7 +32,9 @@ const GRANTS: Record<ActorType, readonly Permission[]> = {
   contractor: [],
   client: [],
   integration: [],
-  ai: [],
+  // Read only. The ai actor reaches services only through the fixed tool list in domains/assistant,
+  // and every tool returns an explicit set of fields (no contact details, notes or ids from other systems).
+  ai: ["assistant.read", "clients.read", "work.read", "growth.read", "monitoring.read", "calendar.read"],
 };
 
 export function can(actor: Actor, permission: Permission): boolean {

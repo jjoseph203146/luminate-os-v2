@@ -2,7 +2,7 @@
 import { assertCan } from "@/platform/auth/permissions";
 import type { Actor } from "@/platform/auth/types";
 import { toLocalDate } from "@/platform/calendar/business-days";
-import { createAdminClient, createUserClient } from "@/platform/db/server";
+import { createAdminClient, readDb } from "@/platform/db/server";
 import { writeAudit } from "@/platform/audit/audit";
 import { RateLimitError, ValidationError } from "@/platform/errors";
 import { getCalendar } from "@/domains/admin/service";
@@ -15,7 +15,7 @@ export async function getGrowthOverview(actor: Actor): Promise<GrowthOverview> {
   assertCan(actor, "growth.read");
   const { timeZone } = await getCalendar(actor);
   const today = toLocalDate(new Date(), timeZone);
-  const leads = await repo.listLeads(await createUserClient());
+  const leads = await repo.listLeads(await readDb(actor));
   return { today, leads, summary: summarize(leads, today), dueNow: dueNow(leads, today) };
 }
 

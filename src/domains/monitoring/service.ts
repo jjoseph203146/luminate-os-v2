@@ -2,7 +2,7 @@
 // The checks themselves still run in the old app; this domain only reads them.
 import { assertCan } from "@/platform/auth/permissions";
 import type { Actor } from "@/platform/auth/types";
-import { createAdminClient, createUserClient } from "@/platform/db/server";
+import { createAdminClient, readDb } from "@/platform/db/server";
 import { getCalendar } from "@/domains/admin/service";
 import { notifyOwner } from "@/domains/notifications/service";
 import { planAlerts } from "./rules";
@@ -11,7 +11,7 @@ import type { MonitoringOverview } from "./types";
 
 export async function getMonitoringOverview(actor: Actor): Promise<MonitoringOverview> {
   assertCan(actor, "monitoring.read");
-  const db = await createUserClient();
+  const db = await readDb(actor);
   const [sites, issues, calendar] = await Promise.all([repo.listSites(db), repo.listOpenIssues(db), getCalendar(actor)]);
   return { sites, issues, timeZone: calendar.timeZone, asOf: new Date().toISOString() };
 }
