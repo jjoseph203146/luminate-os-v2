@@ -1,8 +1,9 @@
 // Pure rules for the Growth screen. No database, easy to test.
-import { STAGES, type GrowthSummary, type Lead, type Stage } from "./types";
+import { WEBSITE_SOURCE } from "./intake";
+import { STAGES, type GrowthSummary, type Lead, type LeadStatus, type Stage } from "./types";
 
 /** The old app's lead status mapped to the new stages (open decision D4). */
-const STATUS_TO_STAGE: Record<string, Stage> = {
+export const STATUS_TO_STAGE: Record<string, Stage> = {
   interested: "new_lead",
   contacted: "in_discussion",
   quoted: "proposal_sent",
@@ -21,6 +22,54 @@ export const STAGE_LABEL: Record<Stage, string> = {
 /** An unknown status is shown as a new lead rather than hidden. */
 export function stageOf(status: string): Stage {
   return STATUS_TO_STAGE[status] ?? "new_lead";
+}
+
+/**
+ * The value written to `leads.status` for a stage. The database only accepts the old app's five values
+ * (leads_status_check), and that check cannot change while the old app shares the database.
+ */
+export const STAGE_TO_STATUS: Record<Stage, LeadStatus> = {
+  new_lead: "interested",
+  in_discussion: "contacted",
+  proposal_sent: "quoted",
+  won: "won",
+  lost: "lost",
+};
+
+export function statusOf(stage: Stage): LeadStatus {
+  return STAGE_TO_STATUS[stage];
+}
+
+/** The old app's suggested sources. Source is free text in the database, so any other value still saves. */
+export const LEAD_SOURCES = ["Referral", "Website", WEBSITE_SOURCE, "Social Media", "Cold Outreach", "Networking", "Existing Client", "Other"] as const;
+
+/** The editable fields of a lead, as saved. */
+export interface LeadFields {
+  name: string;
+  businessName: string;
+  email: string | null;
+  phone: string | null;
+  notes: string | null;
+  followUpDate: string | null;
+  source: string | null;
+  value: number | null;
+}
+
+export const LEAD_FIELDS = ["name", "businessName", "email", "phone", "notes", "followUpDate", "source", "value"] as const satisfies readonly (keyof LeadFields)[];
+
+/** The NAMES of the fields an edit changes (the audit log records names, never contact details). */
+export function changedLeadFields(before: LeadFields, after: LeadFields): (keyof LeadFields)[] {
+  return LEAD_FIELDS.filter((k) => (before[k] ?? null) !== (after[k] ?? null));
+}
+
+/** The message after a stage change. */
+export function stageMessage(r: { stage: Stage; changed: boolean }): string {
+  return r.changed ? `Moved to ${STAGE_LABEL[r.stage]}.` : `Already in ${STAGE_LABEL[r.stage]}.`;
+}
+
+/** The message after an edit. */
+export function leadSavedMessage(changed: readonly string[]): string {
+  return changed.length === 0 ? "Nothing changed." : "Lead saved.";
 }
 
 export const isOpen = (l: Pick<Lead, "stage">) => l.stage !== "won" && l.stage !== "lost";

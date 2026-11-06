@@ -50,6 +50,8 @@ export interface ClientProject {
   targetDate: string | null;
   launchedAt: string | null;
   lastDeployedAt: string | null;
+  /** When the project was created. Picks which project's address monitoring watches (the oldest). */
+  createdAt?: string;
 }
 
 export interface ClientRequest {

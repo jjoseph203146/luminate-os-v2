@@ -140,3 +140,111 @@ export function phoneHref(raw: string | null | undefined): string | null {
   const cleaned = raw.trim().replace(/(?!^\+)[^\d]/g, "");
   return cleaned.replace("+", "").length >= 7 ? cleaned : null;
 }
+
+// --- Client changes (archive, hold, monitoring, details, websites) ---------------------------------------
+
+/** The three on/off switches on a client, each a timestamp column (set = on). */
+export const CLIENT_FLAGS = {
+  archived: { column: "archived_at", on: "client_archived", off: "client_restored" },
+  on_hold: { column: "on_hold_since", on: "client_on_hold", off: "client_hold_released" },
+  monitoring_paused: { column: "monitoring_paused_at", on: "monitoring_paused", off: "monitoring_resumed" },
+} as const;
+export type ClientFlag = keyof typeof CLIENT_FLAGS;
+export type ClientFlagColumn = (typeof CLIENT_FLAGS)[ClientFlag]["column"];
+
+/** What the owner sees after flipping a switch. `changed` is false when it was already in that state. */
+export function flagMessage(flag: ClientFlag, on: boolean, changed: boolean): string {
+  const done: Record<ClientFlag, [string, string]> = {
+    archived: ["Client archived. Restore it any time from the Archived filter.", "Client restored."],
+    on_hold: ["Client put on hold. Alerts for this client are muted.", "Hold released."],
+    monitoring_paused: ["Monitoring stopped for this client.", "Monitoring resumed. The next scheduled scan picks it up."],
+  };
+  const already: Record<ClientFlag, [string, string]> = {
+    archived: ["This client is already archived.", "This client is not archived."],
+    on_hold: ["This client is already on hold.", "This client is not on hold."],
+    monitoring_paused: ["Monitoring is already stopped for this client.", "Monitoring is already on for this client."],
+  };
+  return (changed ? done : already)[flag][on ? 0 : 1];
+}
+
+/**
+ * The value to store for a switch. Turning on something already on keeps the original date
+ * (so "on hold since" stays true); turning off always clears it.
+ */
+export function nextFlagValue(current: string | null, on: boolean, nowIso: string): string | null {
+  if (!on) return null;
+  return current ?? nowIso;
+}
+
+export const WEBSITE_URL_MAX = 500;
+
+/**
+ * Cleans a website address typed by the owner. A bare domain gets https:// added.
+ * Returns a plain-English error for anything that is not a public https address.
+ */
+export function normalizeWebsiteUrl(raw: string): { url: string } | { error: string } {
+  const trimmed = raw.trim();
+  if (!trimmed) return { error: "Enter a website address." };
+  if (trimmed.length > WEBSITE_URL_MAX) return { error: `Use at most ${WEBSITE_URL_MAX} characters.` };
+  const hasScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed);
+  if (hasScheme && !/^https:\/\//i.test(trimmed)) return { error: "Use an https:// address." };
+  let parsed: URL;
+  try {
+    parsed = new URL(hasScheme ? trimmed : `https://${trimmed}`);
+  } catch {
+    return { error: "That is not a valid website address." };
+  }
+  if (parsed.protocol !== "https:") return { error: "Use an https:// address." };
+  if (parsed.username || parsed.password) return { error: "Do not put a login in the address." };
+  const host = parsed.hostname.toLowerCase();
+  if (!host.includes(".") || host.endsWith(".") || /^[\d.]+$/.test(host) || host.startsWith("[")) {
+    return { error: "Use the site's domain name, for example https://example.com." };
+  }
+  const port = parsed.port ? `:${parsed.port}` : "";
+  const path = parsed.pathname === "/" ? "" : parsed.pathname.replace(/\/+$/, "");
+  return { url: `https://${host}${port}${path}${parsed.search}` };
+}
+
+/** Two addresses are the same site when they differ only in scheme, "www.", case or a trailing slash. */
+export function sameWebsite(a: string, b: string): boolean {
+  const key = (u: string) =>
+    u
+      .trim()
+      .toLowerCase()
+      .replace(/^[a-z][a-z0-9+.-]*:\/\//, "")
+      .replace(/^www\./, "")
+      .replace(/#.*$/, "")
+      .replace(/\/+$/, "");
+  return key(a) === key(b);
+}
+
+function withHttps(url: string): string {
+  const trimmed = url.trim();
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
+export interface MonitoredAddress {
+  url: string;
+  source: "project" | "website";
+  /** The project or website row the address comes from. */
+  id: string;
+}
+
+/**
+ * Which address the site scanner watches for this client. Must match monitoring's
+ * listScanCandidates + pickScanUrl: the oldest project with a production URL wins
+ * (even an empty one, which is then skipped), otherwise the oldest website with an address.
+ */
+export function monitoredAddress(
+  projects: { id: string; productionUrl: string | null; createdAt?: string }[],
+  websites: { id: string; url: string }[],
+): MonitoredAddress | null {
+  const project = [...projects]
+    .filter((p) => p.productionUrl !== null)
+    .sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""))[0];
+  if (project?.productionUrl && project.productionUrl.trim() !== "") {
+    return { url: withHttps(project.productionUrl), source: "project", id: project.id };
+  }
+  const site = websites.find((w) => w.url.trim() !== "");
+  return site ? { url: withHttps(site.url), source: "website", id: site.id } : null;
+}

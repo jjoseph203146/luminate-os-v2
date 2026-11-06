@@ -6,6 +6,8 @@ import { requireOwner } from "@/platform/auth/actor";
 import { formToObject } from "@/platform/action-errors";
 import { runAction } from "@/platform/actions";
 import * as admin from "@/domains/admin/service";
+import * as billing from "@/domains/billing/service";
+import { syncMessage } from "@/domains/billing/rules";
 import * as automation from "@/domains/automation/service";
 import * as notifications from "@/domains/notifications/service";
 import type { ActionState } from "@/ui/action-state";
@@ -73,4 +75,23 @@ export async function sendTestPushAction(prev: ActionState, formData: FormData) 
   return owned("/settings/notifications", "Test sent. It should appear on your phone within a few seconds.", async (a) => {
     await notifications.sendTest(a);
   })(prev, formData);
+}
+
+// --- Stripe -------------------------------------------------------------------------------
+
+/** "Sync from Stripe": backfills customers and payments the webhook missed. Takes up to about 45 seconds. */
+export async function syncStripeAction(): Promise<ActionState> {
+  const actor = await requireOwner();
+  let message = "Sync finished.";
+  const result = await runAction(
+    async () => {
+      message = syncMessage(await billing.syncFromStripe(actor));
+    },
+    () => message,
+  );
+  if (result.status === "ok") {
+    revalidatePath("/clients", "layout");
+    revalidatePath("/");
+  }
+  return result;
 }

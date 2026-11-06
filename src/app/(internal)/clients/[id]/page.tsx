@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { requireOwner } from "@/platform/auth/actor";
 import { getClientWorkspace } from "@/domains/clients/service";
-import { ageLabel, formatMoney, phoneHref, safeUrl, statusLabel, statusTone } from "@/domains/clients/rules";
+import { ageLabel, formatMoney, monitoredAddress, phoneHref, safeUrl, statusLabel, statusTone } from "@/domains/clients/rules";
 import type { ClientProject, ClientWorkspace } from "@/domains/clients/types";
 import { Icon, type IconName } from "@/ui/Icon";
 import { Flag, StatusBadge } from "@/ui/StatusBadge";
@@ -12,11 +12,12 @@ import { PageTitle } from "@/ui/shell/PageTitle";
 import { ActionForm } from "@/ui/ActionForm";
 import { BTN_SMALL } from "@/ui/forms";
 import { resendInvoiceAction } from "./actions";
+import { ManageTab, WebsitesEditor } from "./manage";
 import { AddRequestLink, ClientRequestTile } from "@/ui/shell/QuickAddButtons";
 
 export const metadata = { title: "Client" };
 
-const TABS = ["overview", "projects", "websites", "care", "requests", "billing", "documents", "activity"] as const;
+const TABS = ["overview", "projects", "websites", "care", "requests", "billing", "documents", "activity", "manage"] as const;
 type Tab = (typeof TABS)[number];
 const TAB_LABEL: Record<Tab, string> = {
   overview: "Overview",
@@ -27,6 +28,7 @@ const TAB_LABEL: Record<Tab, string> = {
   billing: "Billing",
   documents: "Documents",
   activity: "Activity",
+  manage: "Manage",
 };
 
 type SearchParams = Promise<{ tab?: string | string[] }>;
@@ -157,6 +159,7 @@ export default async function ClientWorkspacePage({ params, searchParams }: { pa
   const { client, monitor } = ws;
   const tel = phoneHref(client.phone);
   const mainSite = ws.websites[0] ? safeUrl(ws.websites[0].url) : null;
+  const monitored = monitoredAddress(ws.projects, ws.websites);
   const openCount = ws.requests.filter((r) => r.status !== "completed").length;
   const counts: Partial<Record<Tab, number>> = { projects: ws.projects.length, websites: ws.websites.length, requests: openCount };
   const tabHref = (t: Tab) => (t === "overview" ? `/clients/${id}` : `/clients/${id}?tab=${t}`);
@@ -214,6 +217,12 @@ export default async function ClientWorkspacePage({ params, searchParams }: { pa
           })}
         </div>
 
+        {client.archivedAt && (
+          <Banner tone="amber" icon="folder_zip">
+            This client is archived, so it is hidden from lists and every scheduled job. <Link href={tabHref("manage")} className="font-medium text-blue">Restore it in Manage</Link>.
+          </Banner>
+        )}
+
         {(tab === "overview" || tab === "websites") && monitor.state === "down" && (
           <Banner tone="red" icon="error">{monitor.url ?? "The website"} is down. Last checked {ageLabel(monitor.lastCheckedAt, now)}.</Banner>
         )}
@@ -236,6 +245,7 @@ export default async function ClientWorkspacePage({ params, searchParams }: { pa
 
         {tab === "websites" && (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] items-start gap-3">
+            <WebsitesEditor ws={ws} monitored={monitored} />
             {ws.websites.length === 0 && ws.projects.length === 0 && (
               <Card icon="language" title="Websites" note="No websites or projects recorded." />
             )}
@@ -269,6 +279,8 @@ export default async function ClientWorkspacePage({ params, searchParams }: { pa
             </Card>
           </div>
         )}
+
+        {tab === "manage" && <ManageTab ws={ws} />}
 
         {tab === "care" && (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] items-start gap-3">
@@ -323,7 +335,7 @@ export default async function ClientWorkspacePage({ params, searchParams }: { pa
         {tab === "billing" && (
           <>
             <Banner tone="amber" icon="help">
-              Payment status: not verified. The figures below are records kept by the existing app. They are not checked against Stripe here.
+              Payments are recorded from Stripe as they happen. If one is missing, run Sync from Stripe in Settings → Stripe.
             </Banner>
             <div className="grid grid-cols-[repeat(auto-fill,minmax(300px,1fr))] items-start gap-3">
               <Card icon="credit_card" title="Subscription" tag="Not verified">

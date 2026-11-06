@@ -1,17 +1,23 @@
+import Link from "next/link";
+import type { ReactNode } from "react";
 import { requireOwner } from "@/platform/auth/actor";
 import { getGrowthOverview } from "@/domains/growth/service";
-import { followUpNote, followUpShort, followUpState, sortOpen, STAGE_LABEL } from "@/domains/growth/rules";
-import type { Lead, Stage } from "@/domains/growth/types";
+import { followUpNote, followUpShort, followUpState, isOpen, LEAD_SOURCES, sortOpen, STAGE_LABEL } from "@/domains/growth/rules";
+import { NOT_GIVEN } from "@/domains/growth/intake";
+import { STAGES, type Lead, type Stage } from "@/domains/growth/types";
 import { phoneHref } from "@/domains/clients/rules";
+import { ActionForm } from "@/ui/ActionForm";
+import { BTN_PRIMARY, BTN_SMALL, BTN_TEXT_RED, INPUT, MONO_INPUT, Stack, TEXTAREA } from "@/ui/forms";
 import { Icon } from "@/ui/Icon";
 import { ActionTile, EmptyNote, Group, ListRow, Pill, SectionHead, type KitTone } from "@/ui/kit";
 import { Panel } from "@/ui/Panel";
 import { Kv, KvCard, PanelLabel, TextCard } from "@/ui/records";
 import { PageTitle } from "@/ui/shell/PageTitle";
+import { createLeadAction, deleteLeadAction, setLeadFollowUpAction, setLeadStageAction, updateLeadAction } from "./actions";
 
 export const metadata = { title: "Growth" };
 
-type SearchParams = Promise<{ lead?: string | string[] }>;
+type SearchParams = Promise<{ lead?: string | string[]; add?: string | string[] }>;
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
 const money = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
@@ -51,11 +57,70 @@ function Tile({ label, value, note, tone = "text-ink" }: { label: string; value:
   );
 }
 
+/** Collapsed section inside the lead panel (no script needed). */
+function Fold({ label, icon, children }: { label: string; icon: "edit" | "cancel"; children: ReactNode }) {
+  return (
+    <details className="group rounded-[14px] border border-line bg-surface">
+      <summary className="flex min-h-[46px] cursor-pointer list-none items-center gap-2 px-3.5 text-[14px] font-medium text-ink [&::-webkit-details-marker]:hidden">
+        <Icon name={icon} size={18} className="text-dim" />
+        <span className="flex-1">{label}</span>
+        <Icon name="keyboard_arrow_down" size={20} className="text-dim transition-transform group-open:rotate-180" />
+      </summary>
+      <div className="border-t border-line px-3.5 pb-3.5 pt-3">{children}</div>
+    </details>
+  );
+}
+
+/** The fields of a lead, blank for a new one. Used by "Add lead" and "Edit details". */
+function LeadFields({ lead }: { lead?: Lead }) {
+  const sources: string[] = [...LEAD_SOURCES];
+  if (lead?.source && !sources.includes(lead.source)) sources.unshift(lead.source);
+  return (
+    <div className="flex flex-col gap-3">
+      <Stack label="Business name (optional)">
+        <input name="businessName" maxLength={150} defaultValue={lead && lead.businessName !== NOT_GIVEN ? lead.businessName : ""} placeholder="Nova Barbershop" className={INPUT} />
+      </Stack>
+      <Stack label="Contact name">
+        <input name="name" required maxLength={100} defaultValue={lead?.name ?? ""} placeholder="Marcus Rowe" className={INPUT} />
+      </Stack>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Stack label="Email (optional)">
+          <input name="email" type="email" maxLength={254} defaultValue={lead?.email ?? ""} autoComplete="off" className={INPUT} />
+        </Stack>
+        <Stack label="Phone (optional)">
+          <input name="phone" type="tel" maxLength={40} defaultValue={lead?.phone ?? ""} autoComplete="off" className={INPUT} />
+        </Stack>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Stack label="Came in by (optional)">
+          <select name="source" defaultValue={lead?.source ?? ""} className={INPUT}>
+            <option value="">Not set</option>
+            {sources.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        </Stack>
+        <Stack label="Deal value, USD (optional)">
+          <input name="value" inputMode="decimal" maxLength={14} defaultValue={lead?.value ?? ""} placeholder="2500" className={MONO_INPUT} />
+        </Stack>
+      </div>
+      <Stack label="Follow-up date (optional)">
+        <input name="followUpDate" type="date" defaultValue={lead?.followUpDate ?? ""} className={INPUT} />
+      </Stack>
+      <Stack label="Notes (optional)">
+        <textarea name="notes" rows={3} maxLength={5000} defaultValue={lead?.notes ?? ""} className={TEXTAREA} />
+      </Stack>
+    </div>
+  );
+}
+
 export default async function GrowthPage({ searchParams }: { searchParams: SearchParams }) {
   const actor = await requireOwner();
   const params = await searchParams;
   const { today, leads, summary: s, dueNow } = await getGrowthOverview(actor);
   const open = sortOpen(leads);
+  const closed = leads.filter((l) => !isOpen(l));
+  const adding = first(params.add) === "1";
   const leadId = first(params.lead);
   const selected = leadId ? leads.find((l) => l.id === leadId) : undefined;
   const maxStage = Math.max(1, ...s.stages.map((x) => x.count));
@@ -65,9 +130,11 @@ export default async function GrowthPage({ searchParams }: { searchParams: Searc
     <>
       <PageTitle title="Growth" sub="Leads, outreach and follow-ups" />
       <div className="flex flex-col gap-5">
-        <div className="flex gap-2.5 rounded-xl bg-blue-soft px-3.5 py-3 text-[13px] leading-[1.45] text-blue">
-          <Icon name="info" size={18} />
-          <span className="flex-1">Growth is read-only for now. Add and edit leads in the existing app; they show up here.</span>
+        <div className="flex">
+          <Link href="/growth?add=1" scroll={false} className={`${BTN_PRIMARY} inline-flex items-center gap-1.5`}>
+            <Icon name="add" size={20} />
+            Add lead
+          </Link>
         </div>
 
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -126,6 +193,16 @@ export default async function GrowthPage({ searchParams }: { searchParams: Searc
             </Group>
           </section>
         </div>
+
+        {closed.length > 0 && (
+          <details className="group">
+            <summary className="flex cursor-pointer list-none items-center gap-1 [&::-webkit-details-marker]:hidden">
+              <SectionHead title="Won and lost" count={closed.length} />
+              <Icon name="keyboard_arrow_down" size={20} className="mb-2 text-dim transition-transform group-open:rotate-180" />
+            </summary>
+            <Group>{closed.map((l) => leadRow(l, today))}</Group>
+          </details>
+        )}
       </div>
 
       {selected && (
@@ -157,10 +234,54 @@ export default async function GrowthPage({ searchParams }: { searchParams: Searc
               <TextCard>{selected.notes}</TextCard>
             </>
           )}
-          <div className="flex gap-1.5 text-[12px] leading-[1.45] text-dim">
-            <Icon name="lock" size={15} />
-            Leads are edited in the existing app for now.
+
+          <PanelLabel>Stage</PanelLabel>
+          <div className="flex flex-wrap gap-2">
+            {STAGES.filter((st) => st !== selected.stage).map((st) => (
+              <ActionForm key={st} action={setLeadStageAction} submitLabel={STAGE_LABEL[st]} className="contents" buttonClassName={BTN_SMALL}>
+                <input type="hidden" name="id" value={selected.id} />
+                <input type="hidden" name="stage" value={st} />
+              </ActionForm>
+            ))}
           </div>
+
+          <PanelLabel>Follow-up date</PanelLabel>
+          <ActionForm key={`fu-${selected.id}-${selected.followUpDate ?? ""}`} action={setLeadFollowUpAction} submitLabel="Save date" className="flex flex-col gap-2" buttonClassName={BTN_SMALL} note="Clear the date and save to remove it.">
+            <input type="hidden" name="id" value={selected.id} />
+            <input name="followUpDate" type="date" defaultValue={selected.followUpDate ?? ""} aria-label="Follow-up date" className={INPUT} />
+          </ActionForm>
+
+          <Fold label="Edit details" icon="edit">
+            <ActionForm key={`edit-${selected.id}`} action={updateLeadAction} submitLabel="Save lead" className="flex flex-col gap-3" buttonClassName={BTN_PRIMARY}>
+              <input type="hidden" name="id" value={selected.id} />
+              <LeadFields lead={selected} />
+            </ActionForm>
+          </Fold>
+
+          <Fold label="Delete lead" icon="cancel">
+            <ActionForm key={`del-${selected.id}`} action={deleteLeadAction} submitLabel="Delete lead" className="flex flex-col gap-3" buttonClassName={BTN_TEXT_RED}>
+              <input type="hidden" name="id" value={selected.id} />
+              <p className="m-0 text-[13px] leading-[1.45] text-dim">
+                This removes the lead for good. To keep a record, move it to Lost instead.
+              </p>
+              <label className="flex items-center gap-2 text-[14px]">
+                <input type="checkbox" name="confirm" value="yes" required className="h-5 w-5" />
+                Yes, delete {selected.businessName !== NOT_GIVEN ? selected.businessName : selected.name}
+              </label>
+            </ActionForm>
+          </Fold>
+        </Panel>
+      )}
+
+      {adding && !selected && (
+        <Panel label="New lead" closeHref="/growth">
+          <div className="text-[21px] font-semibold leading-tight tracking-[-.01em]">Add lead</div>
+          <ActionForm action={createLeadAction} submitLabel="Add lead" className="flex flex-col gap-3" buttonClassName={BTN_PRIMARY}>
+            <LeadFields />
+          </ActionForm>
+          <p className="m-0 text-[12px] leading-[1.45] text-dim">
+            New leads start at New lead. A won lead does not become a client by itself; clients come from Stripe.
+          </p>
         </Panel>
       )}
     </>

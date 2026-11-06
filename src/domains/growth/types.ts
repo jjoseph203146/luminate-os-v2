@@ -1,6 +1,10 @@
 export const STAGES = ["new_lead", "in_discussion", "proposal_sent", "won", "lost"] as const;
 export type Stage = (typeof STAGES)[number];
 
+/** The values the database accepts in `leads.status` (leads_status_check). */
+export const LEAD_STATUSES = ["interested", "contacted", "quoted", "won", "lost"] as const;
+export type LeadStatus = (typeof LEAD_STATUSES)[number];
+
 export interface Lead {
   id: string;
   name: string;
@@ -40,4 +44,10 @@ export interface GrowthOverview {
   summary: GrowthSummary;
   /** Open leads whose follow-up is due today or earlier, most overdue first. */
   dueNow: Lead[];
+}
+
+export interface SavedLead {
+  id: string;
+  /** True when the same lead was just saved (a double tap or retry): nothing new was made. */
+  duplicate: boolean;
 }

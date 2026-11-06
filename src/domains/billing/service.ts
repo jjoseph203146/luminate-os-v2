@@ -539,3 +539,6 @@ function defaultInvoiceSender(): InvoiceSender | null {
   const key = getStripeInvoiceKey();
   return key ? createInvoiceSender(getStripe(key)) : null;
 }
+
+// "Sync from Stripe" lives in its own file (it is long); pages reach it through this service like everything else.
+export { getStripeSetup, syncFromStripe, SYNC_BUDGET_MS } from "./sync";
