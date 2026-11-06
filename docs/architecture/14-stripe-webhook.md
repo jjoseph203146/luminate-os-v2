@@ -113,3 +113,43 @@ are still left to `invoice.paid`.
 The `activity_alerts` job announces it as "Payment received: $X (no client attached)". It counts in v2's "paid this
 month"; the old app's Payments screen skips rows without a client. Stripe shows who paid (the alert does not include
 the payer's name or email).
+
+## Sync from Stripe (owner button, added 2026-11-06)
+
+Settings → Stripe → **Sync from Stripe** replaces the old app's two buttons ("Sync Stripe Customers" and "Sync
+Stripe"), so the old app is not needed for a backfill. Code: `src/domains/billing/sync.ts` (reached through
+`billing/service.ts`), rules in `billing/rules.ts`, Stripe reads in `src/platform/stripe/sync-api.ts`. Permission
+`billing.sync` (owner only); at most two runs a minute; one audit row (`stripe.synced`) with the counts, no
+customer details.
+
+The webhook keeps everything current, so this is only for what it missed (events from before it existed, or while
+it was down). In order:
+
+1. **Customers.** Every Stripe customer (up to 1,000) gets a client, created exactly as `customer.created` would
+   (placeholders, status onboarding, an account). An existing client only has blanks and placeholders filled, never
+   a value entered by hand. A client with no account is linked to one.
+2. **Each client with a Stripe customer** (archived ones included: their payments are real money), four
+   independent steps, so one failing does not stop the others:
+   - price and next billing date from the first subscription that is not canceled or `incomplete_expired`; a paused
+     client with a live subscription goes back to active. With no subscription, a schedule that has not started
+     gives the price and start date;
+   - paid invoices not on record are recorded (with Stripe's paid time, else the invoice's creation time, never
+     "now"); one on record as failed is turned into paid;
+   - standalone charges not on record are recorded, except one that paid an invoice or one that matches a recorded
+     payment of the same amount within a minute. A charge the webhook recorded as unassigned (the customer was not
+     a client yet) is given to the client. Skipped for that client when its invoices could not be read;
+   - lifetime value is set to the sum of the client's paid payments; a hold is lifted by a payment made after it
+     began; onboarding becomes active with a signed or exempt contract and a payment on file; past_due is cleared
+     when the sync turned the last failed payment into paid.
+
+It stops starting new clients after 45 seconds (the page allows 60) and says so; running it again finishes, and
+nothing is recorded twice (the same unique invoice id as the webhook). Differences from the old buttons: one button
+for both halves, failed-then-paid invoices repaired, unassigned charges assigned, every invoice tagged by its own
+subscription, the time limit, and the audit row.
+
+**Key permissions.** Besides the webhook's list above, the sync lists **Charges** and **Subscription schedules**
+with the same read-only `STRIPE_SECRET_KEY`. Unverified: if the restricted key lacks one of them, the sync reports
+"N steps could not be completed" (or, for Customers, says the key cannot read customers) and records nothing wrong;
+add the read permission in Stripe and run it again.
+
+Not ported: the old `sync_log` rows (v2 has the audit row).

@@ -185,7 +185,7 @@ export default async function WorkPage({ searchParams }: { searchParams: SearchP
               </div>
               <div className="flex gap-1.5 text-[12px] leading-[1.45] text-dim">
                 <Icon name="lock" size={15} />
-                Status is changed in the existing app for now.
+                Changing a request's status is not available in this app yet.
               </div>
             </div>
           </div>

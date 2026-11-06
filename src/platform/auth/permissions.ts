@@ -23,6 +23,12 @@ export const PERMISSIONS = [
   "calendar.read",
   "billing.ingest",
   "billing.invoice_send",
+  /** Archive, hold, stop monitoring, edit details and websites. */
+  "clients.write",
+  /** Add and edit leads, change their stage. */
+  "growth.write",
+  /** "Sync from Stripe": record customers and payments the webhook missed. */
+  "billing.sync",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];

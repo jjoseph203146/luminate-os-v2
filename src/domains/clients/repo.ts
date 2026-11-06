@@ -1,7 +1,7 @@
-// Database access for the clients domain. Read-only. Called only from service.ts.
-// Runs as the signed-in owner, so row-level security applies.
+// Database access for the clients domain. Called only from service.ts.
+// Runs as the signed-in owner, so row-level security applies to reads and writes.
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/types/database";
+import type { Database, Json } from "@/types/database";
 import { summarizeMonitor, type MonitorRow } from "./rules";
 import type { ClientListItem, ClientWorkspace } from "./types";
 
@@ -167,6 +167,7 @@ export async function getClientWorkspace(db: Db, id: string, now: Date): Promise
       targetDate: p.target_date,
       launchedAt: p.launched_at,
       lastDeployedAt: p.last_deployed_at,
+      createdAt: p.created_at,
     })),
     requests: requestRows.map((r) => ({
       id: r.id,
@@ -206,4 +207,88 @@ export async function getClientWorkspace(db: Db, id: string, now: Date): Promise
       now,
     ),
   };
+}
+
+// --- Writes (owner only; the service checks permission and validates first) -------------------------------
+
+type ClientUpdate = Database["public"]["Tables"]["clients"]["Update"];
+
+export interface ClientForChange {
+  id: string;
+  business_name: string;
+  contact_name: string;
+  email: string;
+  phone: string | null;
+  plan_name: string | null;
+  client_since: string | null;
+  revisions_included: number;
+  archived_at: string | null;
+  on_hold_since: string | null;
+  monitoring_paused_at: string | null;
+}
+
+export async function getClientForChange(db: Db, id: string): Promise<ClientForChange | null> {
+  const res = await db
+    .from("clients")
+    .select("id,business_name,contact_name,email,phone,plan_name,client_since,revisions_included,archived_at,on_hold_since,monitoring_paused_at")
+    .eq("id", id)
+    .maybeSingle();
+  if (res.error) throw new RepoError("Could not read the client");
+  return res.data;
+}
+
+/** Returns false when no row was updated (gone, or no access). */
+export async function updateClient(db: Db, id: string, patch: ClientUpdate): Promise<boolean> {
+  const res = await db.from("clients").update(patch).eq("id", id).select("id");
+  if (res.error) throw new RepoError("Could not save the client");
+  return (res.data ?? []).length > 0;
+}
+
+/** The client's History tab, in the old app's format. Best effort: a failure never undoes the change. */
+export async function logActivity(db: Db, clientId: string, entityType: string, entityId: string, action: string, metadata: Json = {}): Promise<void> {
+  const { error } = await db.from("activity_log").insert({ client_id: clientId, entity_type: entityType, entity_id: entityId, action, metadata });
+  if (error) console.error("activity log write failed", { action, code: error.code });
+}
+
+export interface WebsiteRow {
+  id: string;
+  label: string;
+  url: string;
+  created_at: string;
+}
+
+export async function listWebsites(db: Db, clientId: string): Promise<WebsiteRow[]> {
+  return must("read websites", await db.from("client_websites").select("id,label,url,created_at").eq("client_id", clientId).order("created_at"));
+}
+
+export async function insertWebsite(db: Db, clientId: string, label: string, url: string): Promise<WebsiteRow> {
+  return must("add the website", await db.from("client_websites").insert({ client_id: clientId, label, url }).select("id,label,url,created_at").single());
+}
+
+export async function updateWebsite(db: Db, clientId: string, websiteId: string, patch: { label: string; url: string }): Promise<boolean> {
+  const res = await db.from("client_websites").update(patch).eq("id", websiteId).eq("client_id", clientId).select("id");
+  if (res.error) throw new RepoError("Could not save the website");
+  return (res.data ?? []).length > 0;
+}
+
+export async function deleteWebsite(db: Db, clientId: string, websiteId: string): Promise<boolean> {
+  const res = await db.from("client_websites").delete().eq("id", websiteId).eq("client_id", clientId).select("id");
+  if (res.error) throw new RepoError("Could not remove the website");
+  return (res.data ?? []).length > 0;
+}
+
+export interface ProjectUrlRow {
+  id: string;
+  production_url: string | null;
+  created_at: string;
+}
+
+export async function listProjectUrls(db: Db, clientId: string): Promise<ProjectUrlRow[]> {
+  return must("read projects", await db.from("projects").select("id,production_url,created_at").eq("client_id", clientId).order("created_at"));
+}
+
+export async function setProjectProductionUrl(db: Db, clientId: string, projectId: string, url: string | null): Promise<boolean> {
+  const res = await db.from("projects").update({ production_url: url }).eq("id", projectId).eq("client_id", clientId).select("id");
+  if (res.error) throw new RepoError("Could not save the project address");
+  return (res.data ?? []).length > 0;
 }

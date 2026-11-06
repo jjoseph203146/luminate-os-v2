@@ -208,3 +208,51 @@ export async function findClientInvoice(db: Db, clientId: string, invoiceId: str
   if (!client) return null;
   return { stripeCustomerId: client.stripe_customer_id };
 }
+
+// --- "Sync from Stripe" -----------------------------------------------------------------------------------------
+
+export interface SyncClientRow {
+  id: string;
+  stripe_customer_id: string;
+  status: string;
+  on_hold_since: string | null;
+}
+
+/** The webhook's repo plus the few reads a full sync needs. Runs with the owner's own (admin-only RLS) client. */
+export interface SyncRepo extends BillingRepo {
+  /** Every client linked to a Stripe customer, archived ones included (their payments are still real money). */
+  listStripeClients(): Promise<SyncClientRow[]>;
+  /** The client's paid payments (amount and time). */
+  paidRevenue(clientId: string): Promise<{ amount: number; paid_at: string | null }[]>;
+  /** The payment row for a Stripe id, with its client (null client = recorded as unassigned). */
+  findRevenueOwner(stripeId: string): Promise<{ id: string; status: string; client_id: string | null } | null>;
+  /** Gives an unassigned payment to a client; only while it is still unassigned. Returns rows changed. */
+  assignRevenue(id: string, clientId: string): Promise<number>;
+}
+
+export function createSyncRepo(db: Db): SyncRepo {
+  return {
+    ...createBillingRepo(db),
+    async listStripeClients() {
+      const { data, error } = await db.from("clients").select("id,stripe_customer_id,status,on_hold_since").not("stripe_customer_id", "is", null).order("created_at");
+      if (error) throw new RepoError("read the clients");
+      return (data ?? []).map((r) => ({ id: r.id, stripe_customer_id: r.stripe_customer_id as string, status: r.status, on_hold_since: r.on_hold_since ?? null }));
+    },
+    async paidRevenue(clientId) {
+      const { data, error } = await db.from("revenue_events").select("amount,paid_at").eq("client_id", clientId).eq("status", "paid");
+      if (error) throw new RepoError("read the payments");
+      return (data ?? []).map((r) => ({ amount: Number(r.amount), paid_at: r.paid_at ?? null }));
+    },
+    async findRevenueOwner(stripeId) {
+      const { data, error } = await db.from("revenue_events").select("id,status,client_id").eq("stripe_invoice_id", stripeId).limit(1);
+      if (error) throw new RepoError("read the payment");
+      const row = data?.[0];
+      return row ? { id: row.id, status: row.status, client_id: row.client_id ?? null } : null;
+    },
+    async assignRevenue(id, clientId) {
+      const { data, error } = await db.from("revenue_events").update({ client_id: clientId }).eq("id", id).is("client_id", null).select("id");
+      if (error) throw new RepoError("update the payment");
+      return data?.length ?? 0;
+    },
+  };
+}

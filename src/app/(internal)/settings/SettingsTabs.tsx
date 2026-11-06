@@ -9,6 +9,7 @@ const TABS: { href: string; label: string; icon: IconName }[] = [
   { href: "/settings/catalog", label: "Catalog", icon: "sell" },
   { href: "/settings/calendar", label: "Calendar", icon: "calendar_month" },
   { href: "/settings/notifications", label: "Notifications", icon: "notifications" },
+  { href: "/settings/stripe", label: "Stripe", icon: "payments" },
   { href: "/settings/users", label: "Users", icon: "group" },
   { href: "/settings/audit-log", label: "Audit log", icon: "history" },
   { href: "/settings/system-status", label: "System", icon: "monitor_heart" },

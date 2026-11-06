@@ -97,7 +97,7 @@ export default async function TodayPage() {
             <Group>
               {data.attention.length === 0 ? (
                 <EmptyNote>
-                  Nothing needs you right now. New requests, site incidents and overdue tasks will appear here. Website checks and payments are only as current as the existing app.
+                  Nothing needs you right now. New requests, site incidents and overdue tasks will appear here.
                 </EmptyNote>
               ) : (
                 data.attention.map((item) => {

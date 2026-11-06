@@ -301,3 +301,98 @@ export function invoiceRefusedMessage(stripeMessage: string | null, hostedUrl: s
   const link = hostedUrl && /^https:\/\//.test(hostedUrl) ? ` You can send the client this payment page instead: ${hostedUrl}` : "";
   return `Stripe did not send it: ${reason}.${link}`;
 }
+
+// --- "Sync from Stripe" (the old Sync Stripe and Sync Stripe Customers buttons) ---------------------------------
+
+/** A subscription in these states is finished. Every other state has a real price and billing date worth showing. */
+export const DEAD_SUBSCRIPTION_STATUSES = new Set(["canceled", "incomplete_expired"]);
+
+/**
+ * The subscription a sync takes the price and billing date from: the first one that is not finished. An exclude-list,
+ * not an allow-list: the old app's allow-list missed a client whose subscription sat in 'incomplete' (payment method
+ * not confirmed yet), and 'active' alone missed one created with a future start date ('trialing' until then).
+ */
+export function pickSyncSubscription<T extends { status: string }>(subs: T[]): T | null {
+  return subs.find((s) => !DEAD_SUBSCRIPTION_STATUSES.has(s.status)) ?? null;
+}
+
+/**
+ * The revenue_events row for a paid invoice found by a sync. Unlike the webhook (which runs as the payment happens),
+ * a backfill never falls back to "now": an old invoice with no paid_at was once stamped as paid on the day of the
+ * sync and showed up in that month's money. The invoice's creation time is far closer to the truth.
+ */
+export function syncedInvoiceRevenue(
+  invoice: { id: string; amount_paid: number | null; created: number; status_transitions?: { paid_at?: number | null } | null; subscriptionId: string | null },
+  clientId: string,
+) {
+  const paidAt = invoice.status_transitions?.paid_at || invoice.created;
+  return {
+    stripe_invoice_id: invoice.id,
+    client_id: clientId,
+    amount: (invoice.amount_paid ?? 0) / 100,
+    status: "paid" as const,
+    event_type: invoice.subscriptionId ? "subscription" : "one_time",
+    paid_at: new Date(paidAt * 1000).toISOString(),
+  };
+}
+
+/** Two payments of the same amount less than this apart are taken to be the same payment. */
+export const SAME_PAYMENT_WINDOW_MS = 60_000;
+
+/**
+ * Whether a standalone charge should be recorded by a sync. Skipped: anything not succeeded or of no value, a charge
+ * that paid an invoice (the invoice is the record), and one that matches a payment already recorded for the client by
+ * amount and time (a payment recorded before charges carried a link to their invoice).
+ */
+export function shouldRecordCharge(
+  charge: { status: string; amount: number; created: number; paymentIntentId: string | null },
+  invoicePaymentIntents: ReadonlySet<string>,
+  recorded: { amount: number; paid_at: string | null }[],
+): boolean {
+  if (charge.status !== "succeeded" || charge.amount <= 0) return false;
+  if (charge.paymentIntentId && invoicePaymentIntents.has(charge.paymentIntentId)) return false;
+  const amount = charge.amount / 100;
+  const at = charge.created * 1000;
+  return !recorded.some((r) => Number(r.amount) === amount && r.paid_at !== null && Math.abs(Date.parse(r.paid_at) - at) < SAME_PAYMENT_WINDOW_MS);
+}
+
+/** Lifetime value: the sum of the client's paid payments, in whole cents (no floating-point dust). */
+export function lifetimeValueOf(paid: { amount: number }[]): number {
+  return Math.round(paid.reduce((sum, p) => sum + Number(p.amount) * 100, 0)) / 100;
+}
+
+/** True when a payment arrived after the client was put on hold: the hold is lifted, as the webhook does live. */
+export function paidSinceHold(onHoldSince: string | null, paid: { paid_at: string | null }[]): boolean {
+  if (!onHoldSince) return false;
+  const since = Date.parse(onHoldSince);
+  return paid.some((p) => p.paid_at !== null && Date.parse(p.paid_at) > since);
+}
+
+export interface SyncSummary {
+  customersRead: number;
+  clientsCreated: number;
+  clientsUpdated: number;
+  accountsLinked: number;
+  clientsChecked: number;
+  clientsTotal: number;
+  paymentsRecorded: number;
+  statusChanges: number;
+  problems: number;
+  stoppedForTime: boolean;
+}
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** The one-line result shown under the button. */
+export function syncMessage(s: SyncSummary): string {
+  const parts = [
+    `${plural(s.clientsCreated, "new client")}`,
+    `${plural(s.clientsUpdated, "client")} filled in`,
+    `${plural(s.paymentsRecorded, "missing payment")} recorded`,
+    `${plural(s.statusChanges, "status change")}`,
+  ];
+  let text = `Read ${plural(s.customersRead, "Stripe customer")} and checked ${s.clientsChecked} of ${s.clientsTotal} clients: ${parts.join(", ")}.`;
+  if (s.problems > 0) text += ` ${plural(s.problems, "step")} could not be completed; run the sync again, and if it keeps failing check that STRIPE_SECRET_KEY can read customers, subscriptions, invoices and charges.`;
+  if (s.stoppedForTime) text += " It stopped early to stay within the time limit; run it again to finish (nothing is recorded twice).";
+  return text;
+}

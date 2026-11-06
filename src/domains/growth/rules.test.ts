@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { dueNow, followUpNote, followUpShort, followUpState, sortOpen, stageOf, summarize } from "./rules";
+import { changedLeadFields, dueNow, followUpNote, followUpShort, followUpState, leadSavedMessage, sortOpen, STAGE_TO_STATUS, stageMessage, stageOf, STATUS_TO_STAGE, statusOf, summarize, type LeadFields } from "./rules";
+import { LEAD_STATUSES, STAGES } from "./types";
 import type { Lead } from "./types";
 
 const TODAY = "2026-11-05";
@@ -85,5 +86,45 @@ describe("ordering", () => {
     const c = lead({ id: "c", followUpDate: "2026-11-09" });
     expect(dueNow([a, b, c], TODAY).map((l) => l.id)).toEqual(["b", "a"]);
     expect(sortOpen([c, a, b, lead({ id: "d" })]).map((l) => l.id)).toEqual(["b", "a", "c", "d"]);
+  });
+});
+
+describe("statusOf", () => {
+  it("writes the old status values the database accepts", () => {
+    expect(statusOf("new_lead")).toBe("interested");
+    expect(statusOf("in_discussion")).toBe("contacted");
+    expect(statusOf("proposal_sent")).toBe("quoted");
+    expect(statusOf("won")).toBe("won");
+    expect(statusOf("lost")).toBe("lost");
+  });
+  it("round-trips every stage and every status", () => {
+    for (const stage of STAGES) expect(stageOf(statusOf(stage))).toBe(stage);
+    for (const status of LEAD_STATUSES) expect(statusOf(stageOf(status))).toBe(status);
+  });
+  it("only ever writes an allowed status", () => {
+    expect([...new Set(Object.values(STAGE_TO_STATUS))].sort()).toEqual([...LEAD_STATUSES].sort());
+    expect(Object.keys(STATUS_TO_STAGE).sort()).toEqual([...LEAD_STATUSES].sort());
+  });
+});
+
+describe("changedLeadFields", () => {
+  const base: LeadFields = { name: "A", businessName: "B", email: "a@b.co", phone: null, notes: null, followUpDate: null, source: null, value: 100 };
+  it("lists only the names of changed fields", () => {
+    expect(changedLeadFields(base, { ...base })).toEqual([]);
+    expect(changedLeadFields(base, { ...base, email: "c@d.co", value: 200, followUpDate: "2026-12-01" })).toEqual(["email", "followUpDate", "value"]);
+  });
+  it("treats a missing value and null alike", () => {
+    expect(changedLeadFields({ ...base, notes: undefined as unknown as null }, base)).toEqual([]);
+  });
+});
+
+describe("messages", () => {
+  it("words a stage change", () => {
+    expect(stageMessage({ stage: "won", changed: true })).toBe("Moved to Won.");
+    expect(stageMessage({ stage: "won", changed: false })).toBe("Already in Won.");
+  });
+  it("words an edit", () => {
+    expect(leadSavedMessage([])).toBe("Nothing changed.");
+    expect(leadSavedMessage(["email"])).toBe("Lead saved.");
   });
 });
