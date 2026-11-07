@@ -32,7 +32,7 @@ export default async function StripeSettingsPage() {
           <p className="m-0 text-[14px] leading-[1.5]">
             Payments and new customers arrive by themselves through the Stripe webhook. Use this only to fill in what the webhook missed (for example
             while it was down): it adds clients for Stripe customers the app does not have, fills blank contact details (never overwrites yours), records
-            paid invoices and charges that are missing, and refreshes prices, billing dates and lifetime values. It never changes anything in Stripe, and
+            paid invoices and charges that are missing (including Payment Link payments with no Stripe customer, as unassigned), and refreshes prices, billing dates and lifetime values. It never changes anything in Stripe, and
             running it twice records nothing twice.
           </p>
           <ActionForm

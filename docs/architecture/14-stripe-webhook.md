@@ -142,6 +142,11 @@ it was down). In order:
      began; onboarding becomes active with a signed or exempt contract and a payment on file; past_due is cleared
      when the sync turned the last failed payment into paid.
 
+3. **Payments with no Stripe customer** (Payment Links, Checkout without a customer) from the last 400 days are
+   recorded as unassigned payments (client empty), once each, exactly as the webhook records them live (it only
+   started doing so on 2026-11-06). The per-customer reads above never see them. A payment paid more than 14 days ago
+   that the sync fills in is recorded without a push alert.
+
 It stops starting new clients after 45 seconds (the page allows 60) and says so; running it again finishes, and
 nothing is recorded twice (the same unique invoice id as the webhook). Differences from the old buttons: one button
 for both halves, failed-then-paid invoices repaired, unassigned charges assigned, every invoice tagged by its own

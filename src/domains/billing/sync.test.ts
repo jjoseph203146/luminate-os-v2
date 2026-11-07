@@ -65,6 +65,7 @@ beforeEach(() => {
     retrievePriceAmount: vi.fn(async () => 4900),
     listPaidInvoices: vi.fn(async () => []),
     listCharges: vi.fn(async () => []),
+    listCustomerlessCharges: vi.fn(async () => []),
   };
   deps = { repo, stripe: stripe as unknown as StripeSyncReads, now: () => NOW, clock: () => 1_000_000 };
 });
@@ -238,6 +239,34 @@ describe("payments", () => {
     stripe.listPaidInvoices.mockResolvedValue([invoice()]);
     await sync();
     expect(repo.clients[0]!.status).toBe("onboarding");
+  });
+});
+
+describe("payments without a Stripe customer (Payment Links)", () => {
+  it("records each successful one once, unassigned, and skips failed or already recorded ones", async () => {
+    stripe.listCustomerlessCharges.mockResolvedValue([
+      charge({ id: "ch_link", amount: 50, created: sec("2026-11-06T14:06:00Z") }),
+      charge({ id: "ch_failed", status: "failed" }),
+      charge({ id: "ch_known" }),
+    ]);
+    repo.revenue.push({ id: "r1", stripe_invoice_id: "ch_known", client_id: null, amount: 50, status: "paid", event_type: "one_time", paid_at: "2026-11-01T00:00:00.000Z" });
+    const s = await sync();
+    expect(repo.revenue.find((r) => r.stripe_invoice_id === "ch_link")).toMatchObject({ client_id: null, amount: 0.5, status: "paid", paid_at: "2026-11-06T14:06:00.000Z" });
+    expect(repo.revenue).toHaveLength(2);
+    expect(s.paymentsRecorded).toBe(1);
+    await sync();
+    expect(repo.revenue).toHaveLength(2);
+  });
+  it("looks back about 13 months", async () => {
+    await sync();
+    const since = stripe.listCustomerlessCharges.mock.calls[0]![0] as number;
+    expect(since).toBe(Math.floor(NOW.getTime() / 1000) - 400 * 86_400);
+  });
+  it("a failure there is reported but does not stop the rest", async () => {
+    stripe.listCustomerlessCharges.mockRejectedValue(new Error("no"));
+    repo.clients.push(fakeClient({ stripe_customer_id: "cus_1" }));
+    const s = await sync();
+    expect(s).toMatchObject({ problems: 1, clientsChecked: 1 });
   });
 });
 

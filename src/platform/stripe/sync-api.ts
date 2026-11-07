@@ -48,6 +48,11 @@ export interface StripeSyncReads {
   listPaidInvoices(customerId: string): Promise<SyncInvoice[]>;
   /** The customer's charges, first 100. */
   listCharges(customerId: string): Promise<SyncCharge[]>;
+  /**
+   * Charges with no Stripe customer (a Payment Link or Checkout that did not create one) since `sinceSec`, up to
+   * MAX_SYNC_CUSTOMERS. They belong to no client, so the per-customer reads above never see them.
+   */
+  listCustomerlessCharges(sinceSec: number): Promise<SyncCharge[]>;
 }
 
 const idOf = (ref: unknown): string | null =>
@@ -115,6 +120,12 @@ export function createStripeSyncReads(stripe: Stripe): StripeSyncReads {
     async listCharges(customerId) {
       const list = await stripe.charges.list({ customer: customerId, limit: 100 });
       return list.data.map((c) => ({ id: c.id, status: c.status, amount: c.amount, created: c.created, paymentIntentId: idOf(c.payment_intent) }));
+    },
+    async listCustomerlessCharges(sinceSec) {
+      const all = await stripe.charges.list({ created: { gte: sinceSec }, limit: 100 }).autoPagingToArray({ limit: MAX_SYNC_CUSTOMERS });
+      return all
+        .filter((c) => !c.customer)
+        .map((c) => ({ id: c.id, status: c.status, amount: c.amount, created: c.created, paymentIntentId: idOf(c.payment_intent) }));
     },
   };
 }

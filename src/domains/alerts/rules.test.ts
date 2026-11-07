@@ -53,6 +53,10 @@ describe("payments", () => {
     expect(first(plan)).toMatchObject({ key: "payment:p1", state: "paid", payload: { title: "Payment received: Acme Bakery", body: "$49.00", url: "/clients/c1", tag: "payment-p1" } });
     expect(planActivityAlerts(input({ payments: [payment()], previous: [...seededState, { key: "payment:p1", state: "paid" }] }), NOW)).toEqual([]);
   });
+  it("records an old payment that Sync from Stripe just filled in, without a push", () => {
+    const plan = planActivityAlerts(input({ payments: [payment({ createdAt: hoursAgo(0), paidAt: hoursAgo(24 * 30) })] }), NOW);
+    expect(plan).toEqual([{ key: "payment:p1", state: "paid", payload: null, at: hoursAgo(24 * 30) }]);
+  });
   it("announces a failed payment, with the amount", () => {
     const plan = planActivityAlerts(input({ payments: [payment({ status: "failed", amount: 99.5, paidAt: null })] }), NOW);
     expect(first(plan).payload?.title).toBe("Payment failed: Acme Bakery");

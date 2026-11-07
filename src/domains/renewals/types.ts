@@ -92,8 +92,20 @@ export interface BillingHealth {
   lastSuccessAt: string | null;
 }
 
+export interface NextPayment {
+  clientId: string;
+  clientName: string;
+  amountCents: number;
+  date: string;
+  invoiceSender: InvoiceSender;
+  /** More renewals on the same day. */
+  sameDay: number;
+}
+
 export interface BillingToday {
   tasks: BillingTask[];
+  /** The next renewal expected (from the billing schedules, which follow Stripe), or null when there is none. */
+  nextPayment: NextPayment | null;
   /** Active clients with a plan price but no billing schedule (no Stripe subscription found): no billing tasks for them. */
   missingSchedules: { clientId: string; clientName: string }[];
   health: BillingHealth;

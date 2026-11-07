@@ -2,7 +2,7 @@
 // clock reads: `today` (a New York calendar date) is passed in, so every case is testable.
 import { addCalendarDays, monthDayClamped, toLocalDate } from "@/platform/calendar/business-days";
 import type { MoneySubscription } from "@/platform/stripe/money-api";
-import type { Action, ActionStatus, Agreement, BillingHealth, Cycle, InvoiceSender, Milestone, PlannerAgreement, VerifiedPayment } from "./types";
+import type { Action, ActionStatus, Agreement, BillingHealth, Cycle, InvoiceSender, Milestone, NextPayment, PlannerAgreement, VerifiedPayment } from "./types";
 
 /** Billing dates are New York calendar dates, whatever the server's clock zone. */
 export const BILLING_TIME_ZONE = "America/New_York";
@@ -338,4 +338,24 @@ export function syncSchedulesFromStripe(
     if (Object.keys(patch).length > 0) out.update.push({ agreementId: current.id, patch, resumed: current.status === "paused" && want.status === "active" });
   }
   return out;
+}
+
+/**
+ * The next renewal payment expected: the earliest upcoming renewal (today or later) of an active schedule whose client
+ * is not archived. A renewal already settled (paid or recorded) is skipped in favour of the one after it.
+ */
+export function nextPayment(today: string, agreements: Agreement[], clients: { id: string; name: string; archived: boolean }[], settled: ReadonlySet<string>): NextPayment | null {
+  const byId = new Map(clients.map((c) => [c.id, c]));
+  const upcoming: NextPayment[] = [];
+  for (const a of agreements) {
+    const client = byId.get(a.clientId);
+    if (a.status !== "active" || !client || client.archived || a.monthlyPriceCents <= 0) continue;
+    let date = renewalOnOrAfter(today > a.startsOn ? today : a.startsOn, a.anniversaryDay);
+    if (settled.has(`${a.clientId}:${date}`)) date = nextRenewal(date, a.anniversaryDay);
+    upcoming.push({ clientId: a.clientId, clientName: client.name, amountCents: a.monthlyPriceCents, date, invoiceSender: a.invoiceSender, sameDay: 0 });
+  }
+  upcoming.sort((p, q) => p.date.localeCompare(q.date) || q.amountCents - p.amountCents || p.clientName.localeCompare(q.clientName));
+  const first = upcoming[0];
+  if (!first) return null;
+  return { ...first, sameDay: upcoming.filter((u) => u.date === first.date).length - 1 };
 }
