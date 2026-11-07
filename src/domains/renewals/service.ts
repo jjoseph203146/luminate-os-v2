@@ -22,6 +22,7 @@ import {
   invoiceHref,
   LOOKBACK_DAYS,
   milestoneDef,
+  nextPayment,
   planCycles,
   renewalOnOrAfter,
   shortDay,
@@ -275,17 +276,30 @@ export async function getBillingToday(actor: Actor, now: Date = new Date()): Pro
   const db = await readDb(actor);
   const today = todayIn(now);
   try {
-    const [actions, agreements, clients, job] = await Promise.all([repo.listOpenActions(db, today), repo.listAgreements(db), repo.listClients(db), repo.jobState(db)]);
+    const [actions, agreements, clients, job, recent] = await Promise.all([
+      repo.listOpenActions(db, today),
+      repo.listAgreements(db),
+      repo.listClients(db),
+      repo.jobState(db),
+      repo.listCyclesForPlanning(db, today),
+    ]);
+    const settled = new Set(recent.filter((c) => c.status === "paid" || c.status === "paid_manual").map((c) => `${c.clientId}:${c.dueOn}`));
     const scheduled = new Set(agreements.filter((a) => a.status !== "cancelled").map((a) => a.clientId));
     const missingSchedules = clients
       .filter((c) => !c.archived && c.status !== "paused" && c.subscriptionPrice > 0 && !scheduled.has(c.id))
       .map((c) => ({ clientId: c.id, clientName: c.name }))
       .sort((p, q) => p.clientName.localeCompare(q.clientName));
-    return { available: true, tasks: await buildTasks(db, actions, today), missingSchedules, health: billingHealth(job, now) };
+    return {
+      available: true,
+      tasks: await buildTasks(db, actions, today),
+      nextPayment: nextPayment(today, agreements, clients, settled),
+      missingSchedules,
+      health: billingHealth(job, now),
+    };
   } catch (e) {
     // Most likely migration 0009 is not applied yet. Say so on Today; never pretend there is nothing to do.
     console.warn("billing today: unavailable", { kind: (e as { name?: string })?.name ?? "error" });
-    return { available: false, tasks: [], missingSchedules: [], health: { state: "not_set_up", lastSuccessAt: null } };
+    return { available: false, tasks: [], nextPayment: null, missingSchedules: [], health: { state: "not_set_up", lastSuccessAt: null } };
   }
 }
 

@@ -7,6 +7,7 @@ import {
   invoiceHref,
   matchPayment,
   milestonesFor,
+  nextPayment,
   nextRenewal,
   planCycles,
   renewalDate,
@@ -316,5 +317,27 @@ describe("schedules from Stripe", () => {
     expect(syncSchedulesFromStripe([], [client], [agreement({ source: "manual" })])).toEqual({ create: [], update: [], cancel: [] });
     expect(syncSchedulesFromStripe([sub()], [{ ...client, archived: true }], [])).toEqual({ create: [], update: [], cancel: [] });
     expect(syncSchedulesFromStripe([sub()], [{ ...client, stripeCustomerId: null }], [])).toEqual({ create: [], update: [], cancel: [] });
+  });
+});
+
+describe("nextPayment", () => {
+  const clients = [
+    { id: "c1", name: "Oak & Ember Coffee", archived: false },
+    { id: "c2", name: "Kessler Law Group", archived: false },
+    { id: "c3", name: "Old Co", archived: true },
+  ];
+  it("is the earliest upcoming renewal of an active schedule", () => {
+    const list = [agreement({ id: "a1", clientId: "c1", anniversaryDay: 20 }), agreement({ id: "a2", clientId: "c2", anniversaryDay: 12, monthlyPriceCents: 9900 }), agreement({ id: "a3", clientId: "c3", anniversaryDay: 8 })];
+    expect(nextPayment("2026-11-07", list, clients, new Set())).toEqual({ clientId: "c2", clientName: "Kessler Law Group", amountCents: 9900, date: "2026-11-12", invoiceSender: "luminate", sameDay: 0 });
+  });
+  it("skips a renewal already paid today, and paused or cancelled schedules", () => {
+    const list = [agreement({ clientId: "c1", anniversaryDay: 7 }), agreement({ id: "a2", clientId: "c2", status: "paused", anniversaryDay: 8 })];
+    expect(nextPayment("2026-11-07", list, clients, new Set(["c1:2026-11-07"]))?.date).toBe("2026-12-07");
+    expect(nextPayment("2026-11-07", list, clients, new Set())?.date).toBe("2026-11-07");
+    expect(nextPayment("2026-11-07", [], clients, new Set())).toBeNull();
+  });
+  it("counts other renewals on the same day", () => {
+    const list = [agreement({ id: "a1", clientId: "c1", anniversaryDay: 12 }), agreement({ id: "a2", clientId: "c2", anniversaryDay: 12 })];
+    expect(nextPayment("2026-11-07", list, clients, new Set())?.sameDay).toBe(1);
   });
 });

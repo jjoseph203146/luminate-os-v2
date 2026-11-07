@@ -203,6 +203,28 @@ async function syncClientState(d: SyncDeps, client: SyncClientRow, s: SyncSummar
   }
 }
 
+/** How far back payments without a customer are looked for. */
+export const CUSTOMERLESS_LOOKBACK_DAYS = 400;
+
+/** Successful charges with no customer and not recorded yet: one unassigned paid row each (never twice). */
+async function syncCustomerlessCharges(d: SyncDeps, s: SyncSummary): Promise<void> {
+  const since = Math.floor(d.now().getTime() / 1000) - CUSTOMERLESS_LOOKBACK_DAYS * 86_400;
+  for (const charge of await d.stripe.listCustomerlessCharges(since)) {
+    if (charge.status !== "succeeded" || charge.amount <= 0) continue;
+    if (await d.repo.findRevenueOwner(charge.id)) continue;
+    const inserted = await d.repo.insertRevenue({
+      stripe_invoice_id: charge.id,
+      client_id: null,
+      amount: charge.amount / 100,
+      status: "paid",
+      event_type: "one_time",
+      paid_at: new Date(charge.created * 1000).toISOString(),
+    });
+    // "conflict": the webhook recorded it a moment ago.
+    if (inserted !== "conflict") s.paymentsRecorded++;
+  }
+}
+
 /** Part 2 (the old Sync Stripe) for one client. Each step stands alone: one failing does not stop the others. */
 async function syncClient(d: SyncDeps, client: SyncClientRow, s: SyncSummary): Promise<void> {
   const step = async (name: string, work: () => Promise<void>) => {
@@ -269,6 +291,15 @@ export async function syncFromStripe(actor: Owner, deps?: SyncDeps): Promise<Syn
       s.problems++;
       logProblem("customer", e);
     }
+  }
+
+  // Payments with no Stripe customer (Payment Links): recorded as unassigned, as the webhook does, so the money is
+  // not missing from Collected. The webhook only started recording these on 2026-11-06.
+  try {
+    await syncCustomerlessCharges(d, s);
+  } catch (e) {
+    s.problems++;
+    logProblem("unassigned payments", e);
   }
 
   const clients = await d.repo.listStripeClients();

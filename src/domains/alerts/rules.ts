@@ -78,10 +78,12 @@ function noticeAlert(n: NoticeRow, clients: Record<string, ClientInfo>, requests
  * - A client request or comment (portal notification row) is announced once. Rows already marked read
  *   in the old console are recorded without a push.
  * - The very first run records everything that already exists silently, so turning this on never replays history.
+ * - A payment paid more than WINDOW_DAYS ago (an old payment Sync from Stripe just filled in) is recorded silently:
+ *   it is not news.
  * - Capped at MAX_SENDS_PER_RUN pushes; extras are left for the next run.
  */
 export function planActivityAlerts(input: ActivityInput, now: Date): PlannedAlert[] {
-  void now;
+  const oldPaid = (paidAt: string | null) => paidAt !== null && now.getTime() - Date.parse(paidAt) > WINDOW_DAYS * 86_400_000;
   const seeded = stateOf(input.previous, SEEDED_KEY) !== null;
   const out: PlannedAlert[] = [];
 
@@ -89,7 +91,8 @@ export function planActivityAlerts(input: ActivityInput, now: Date): PlannedAler
     if (p.status !== "paid" && p.status !== "failed") continue;
     const key = paymentKey(p.id);
     if (stateOf(input.previous, key) === p.status) continue;
-    out.push({ key, state: p.status, payload: seeded ? paymentAlert(p, input.clients) : null, at: p.status === "paid" ? (p.paidAt ?? p.createdAt) : p.createdAt });
+    const silent = !seeded || (p.status === "paid" && oldPaid(p.paidAt));
+    out.push({ key, state: p.status, payload: silent ? null : paymentAlert(p, input.clients), at: p.status === "paid" ? (p.paidAt ?? p.createdAt) : p.createdAt });
   }
 
   for (const n of input.notices) {

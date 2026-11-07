@@ -2,7 +2,8 @@ import Link from "next/link";
 import { requireOwner } from "@/platform/auth/actor";
 import { getToday } from "@/domains/today/service";
 import { getBillingToday } from "@/domains/renewals/service";
-import type { BillingHealth } from "@/domains/renewals/types";
+import type { BillingHealth, InvoiceSender } from "@/domains/renewals/types";
+import { formatCents, shortDay } from "@/domains/renewals/rules";
 import { BillingTaskRow } from "./_billing/BillingTasks";
 import { ageLabel, formatMoney } from "@/domains/clients/rules";
 import type { AttentionKind } from "@/domains/today/types";
@@ -49,6 +50,8 @@ function dueLabel(iso: string | null): string {
   return new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1)).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
 }
 
+const SENDER: Record<InvoiceSender, string> = { stripe_autopay: "Stripe autopay", stripe_invoice: "Stripe invoice", luminate: "you send the invoice" };
+
 /** Why billing tasks may be missing or late. Shown on Today, never hidden. */
 function healthMessage(h: BillingHealth, available: boolean): string {
   if (!available) return "Billing tasks are unavailable: the billing tables could not be read (database migration 0009 may not be applied).";
@@ -63,13 +66,14 @@ export default async function TodayPage() {
   const [data, billing] = await Promise.all([getToday(actor), getBillingToday(actor)]);
   const now = new Date(data.generatedAt);
   const r = data.revenue;
+  const np = billing.nextPayment;
 
   return (
     <>
       <PageTitle title="Today" sub={longDate(data.today)} />
       <div className="flex flex-wrap items-start gap-5">
         <div className="flex min-w-0 flex-[1.5_1_360px] flex-col gap-5">
-          {/* Next payment: there is no verified payment source in this app yet, so it says so. */}
+          {/* Next payment: the next renewal from the billing schedules, which follow each client's Stripe subscription. */}
           <section
             aria-label="Next payment"
             className="flex flex-col gap-3 rounded-2xl border border-transparent bg-hero p-4 text-white"
@@ -77,14 +81,18 @@ export default async function TodayPage() {
             <div className="flex items-center gap-2">
               <span className="flex-1 text-[11px] font-semibold uppercase tracking-[.12em] text-white/[.72]">Next payment</span>
               <span className="inline-flex items-center gap-1 rounded-full bg-white/[.12] py-1 pl-1.5 pr-[9px] text-[12px] font-semibold text-white/[.88]">
-                <Icon name="help" size={15} filled />
-                Not verified
+                <Icon name={np ? "verified" : "help"} size={15} filled />
+                {np ? "From Stripe" : billing.available ? "None scheduled" : "Unavailable"}
               </span>
             </div>
             <div className="flex items-end justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <div className="text-[24px] font-semibold leading-[1.05] tracking-[-.02em]">Not available</div>
-                <div className="mt-1.5 text-[14px]">No verified payment source yet</div>
+                <div className="text-[24px] font-semibold leading-[1.05] tracking-[-.02em]">{np ? formatCents(np.amountCents) : "No renewal due"}</div>
+                <div className="mt-1.5 text-[14px]">
+                  {np
+                    ? `${np.clientName}${np.sameDay > 0 ? ` and ${np.sameDay} more` : ""} · ${shortDay(np.date)}${np.date === data.today ? " (today)" : ""} · ${SENDER[np.invoiceSender]}`
+                    : "No active Stripe subscription renews soon"}
+                </div>
               </div>
               {r.latestPaidAt && (
                 <div className="flex-none whitespace-nowrap text-right">
@@ -95,10 +103,10 @@ export default async function TodayPage() {
             </div>
             <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-t border-white/[.14] pt-2.5 text-[12px] text-white/[.72]">
               <span className="inline-flex items-center gap-1.5">
-                <Icon name="credit_card_off" size={16} />
-                Not checked against Stripe
+                <Icon name="payments" size={16} />
+                Renewals follow each client&apos;s Stripe subscription
               </span>
-              <span className="font-mono text-[11px]">Existing app records</span>
+              <Link href="/money" className="font-semibold text-white/[.88] underline">Money</Link>
             </div>
           </section>
 
@@ -225,7 +233,7 @@ export default async function TodayPage() {
           <section aria-labelledby="rev-h" className="flex flex-col gap-3 rounded-[14px] border border-line bg-surface px-4 py-3.5">
             <div className="flex items-center gap-2">
               <h2 id="rev-h" className="m-0 flex-1 text-[12px] font-semibold uppercase tracking-[.1em] text-dim">Revenue</h2>
-              <span className="font-mono text-[11px] text-dim">Existing app records</span>
+              <span className="text-[11px] text-dim">From Stripe payments</span>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -248,7 +256,8 @@ export default async function TodayPage() {
               </div>
             </div>
             <div className="text-[12px] text-dim">
-              Not checked against Stripe. Plan prices are what clients are set to pay, not money collected.
+              Payments are recorded from Stripe as they happen; Sync from Stripe (Settings → Stripe) fills in any it missed. Plan prices are what clients are set to pay, not money collected:{" "}
+              <Link href="/money" className="font-medium text-blue">see Money</Link> for paid-only MRR.
             </div>
           </section>
           <p className="mx-0.5 text-[12px] text-dim">Updated {ageLabel(data.generatedAt, now)}</p>
