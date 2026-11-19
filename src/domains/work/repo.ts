@@ -5,7 +5,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
 import { createAdminClient } from "@/platform/db/server";
-import { isValidDisplayId } from "./rules";
+import { isUndefinedColumn } from "@/platform/db/schema-errors";
+import { isValidDisplayId, requestBillingColumns, type RequestCoverage } from "./rules";
 import type { ClientOption, WorkProject, WorkRequest, WorkTask } from "./types";
 
 type Db = SupabaseClient<Database>;
@@ -79,23 +80,37 @@ export async function insertRequest(
     priority: string | null;
     source: string | null;
     websiteUrl: string | null;
+    status: string | null;
+    completedAt: string | null;
+    coverage: RequestCoverage | null;
+    price: number | null;
   },
-): Promise<{ id: string; displayId: string }> {
-  const { data, error } = await db
-    .from("requests")
-    .insert({
-      display_id: v.displayId,
-      client_id: v.clientId,
-      title: v.title,
-      description: v.description,
-      priority: v.priority,
-      source: v.source,
-      website_url: v.websiteUrl,
-    })
-    .select("id,display_id")
-    .single();
-  if (error) fail("save the request", error);
-  return { id: data.id, displayId: data.display_id };
+): Promise<{ id: string; displayId: string; coverageStored: boolean }> {
+  const billing = requestBillingColumns(v.coverage, v.price);
+  const row: Database["public"]["Tables"]["requests"]["Insert"] = {
+    display_id: v.displayId,
+    client_id: v.clientId,
+    title: v.title,
+    description: v.description,
+    priority: v.priority,
+    source: v.source,
+    website_url: v.websiteUrl,
+    ...billing,
+  };
+  if (v.status) row.status = v.status;
+  if (v.completedAt) row.completed_at = v.completedAt;
+
+  const first = await db.from("requests").insert(row).select("id,display_id").single();
+  if (!first.error && first.data) return { id: first.data.id, displayId: first.data.display_id, coverageStored: v.coverage !== null };
+  // Migration 0010 adds coverage. The billable columns already exist, so retry without the new one.
+  if (v.coverage && isUndefinedColumn(first.error, "coverage")) {
+    const without = { ...row };
+    delete without.coverage;
+    const second = await db.from("requests").insert(without).select("id,display_id").single();
+    if (second.error || !second.data) fail("save the request", second.error);
+    return { id: second.data.id, displayId: second.data.display_id, coverageStored: false };
+  }
+  fail("save the request", first.error);
 }
 
 export async function findTaskBySource(db: Db, sourceReference: string) {
@@ -141,11 +156,32 @@ export async function insertTask(
 export async function getTask(db: Db, id: string) {
   const { data, error } = await db
     .from("internal_work_items")
-    .select("id,title,status,client_id,completed_at")
+    .select("id,title,description,status,priority,due_date,client_id,completed_at")
     .eq("id", id)
     .maybeSingle();
   if (error) fail("read the task", error);
   return data;
+}
+
+export async function updateTask(db: Db, id: string, patch: Database["public"]["Tables"]["internal_work_items"]["Update"]): Promise<void> {
+  const { error } = await db.from("internal_work_items").update(patch).eq("id", id);
+  if (error) fail("update the task", error);
+}
+
+export async function getRequestClient(db: Db, id: string): Promise<{ id: string; client_id: string } | null> {
+  const { data, error } = await db.from("requests").select("id,client_id").eq("id", id).maybeSingle();
+  if (error) fail("read the request", error);
+  return data;
+}
+
+export async function insertComment(db: Db, v: { requestId: string; clientId: string; body: string }): Promise<{ id: string }> {
+  const { data, error } = await db
+    .from("request_comments")
+    .insert({ request_id: v.requestId, client_id: v.clientId, author_type: "admin", author_user_id: null, body: v.body })
+    .select("id")
+    .single();
+  if (error || !data) fail("save the comment", error);
+  return { id: data.id };
 }
 
 export async function updateTaskStatus(db: Db, id: string, status: string, completedAt: string | null): Promise<void> {

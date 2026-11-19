@@ -3,8 +3,9 @@
 import { z } from "zod";
 import { assertCan } from "@/platform/auth/permissions";
 import type { Actor } from "@/platform/auth/types";
-import { readDb } from "@/platform/db/server";
+import { createAdminClient, readDb } from "@/platform/db/server";
 import { writeAudit } from "@/platform/audit/audit";
+import { stampActor } from "@/platform/audit/stamp";
 import { parseInput } from "@/platform/auth/schemas";
 import { PermissionError, RuleError } from "@/platform/errors";
 import {
@@ -17,7 +18,7 @@ import {
   sameWebsite,
   type ClientFlag,
 } from "./rules";
-import { addWebsiteSchema, clientDetailsSchema, clientFlagSchema, projectUrlSchema, removeWebsiteSchema, updateWebsiteSchema } from "./schemas";
+import { addWebsiteSchema, clientDetailsSchema, clientFlagSchema, createNoteSchema, projectUrlSchema, removeWebsiteSchema, updateNoteSchema, updateWebsiteSchema } from "./schemas";
 import * as repo from "./repo";
 import type { ClientListItem, ClientWorkspace } from "./types";
 
@@ -230,5 +231,55 @@ export async function setProjectUrl(actor: Actor, raw: unknown): Promise<ChangeR
     after: { production_url: url },
   });
   return { message: url ? "Live address saved." : "Live address cleared. Monitoring now uses the client's first website.", changed: true };
+}
+
+// --- Client notes ------------------------------------------------------------------------------------------
+
+type NoteWriter = Extract<Actor, { type: "owner" | "bot" }>;
+
+function assertNoteWriter(actor: Actor): asserts actor is NoteWriter {
+  assertCan(actor, "notes.write");
+  if (actor.type !== "owner" && actor.type !== "bot") throw new PermissionError();
+}
+
+async function noteDb(actor: NoteWriter) {
+  return actor.type === "owner" ? readDb(actor) : createAdminClient();
+}
+
+/** Adds an internal note on a client. The note text stays on the row; the audit row records its length. */
+export async function createClientNote(actor: Actor, raw: unknown): Promise<{ id: string }> {
+  assertNoteWriter(actor);
+  const input = parseInput(createNoteSchema, raw);
+  const db = await noteDb(actor);
+  if (!(await repo.clientExists(db, input.clientId))) throw new RuleError("That client could not be found.");
+  const saved = await repo.insertNote(db, input.clientId, input.content);
+  await repo.logActivity(db, input.clientId, "client_note", saved.id, "note_added");
+  await writeAudit(actor, {
+    action: "client_note.created",
+    entityType: "client_note",
+    entityId: saved.id,
+    clientId: input.clientId,
+    after: stampActor(actor, { length: input.content.length }),
+  });
+  return saved;
+}
+
+/** Replaces a note's text. Does not move it to another client. */
+export async function updateClientNote(actor: Actor, raw: unknown): Promise<{ id: string; changed: boolean }> {
+  assertNoteWriter(actor);
+  const input = parseInput(updateNoteSchema, raw);
+  const db = await noteDb(actor);
+  const before = await repo.getNote(db, input.id);
+  if (!before) throw new RuleError("That note could not be found.");
+  if (before.content === input.content) return { id: input.id, changed: false };
+  if (!(await repo.updateNote(db, input.id, input.content))) throw new RuleError("That note could not be found.");
+  await writeAudit(actor, {
+    action: "client_note.updated",
+    entityType: "client_note",
+    entityId: input.id,
+    clientId: before.client_id,
+    after: stampActor(actor, { length: input.content.length }),
+  });
+  return { id: input.id, changed: true };
 }
 

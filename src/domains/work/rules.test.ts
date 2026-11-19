@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { completionFields, duplicateWindowStart, isValidDisplayId, priorityRank, taskSourceReference } from "./rules";
-import { createRequestSchema, createTaskSchema, taskStatusSchema } from "./schemas";
+import { completionFields, duplicateWindowStart, isValidDisplayId, priorityRank, requestBillingColumns, taskSourceReference } from "./rules";
+import { createRequestSchema, createTaskSchema, taskStatusSchema, updateTaskSchema } from "./schemas";
 
 const uuid = "123e4567-e89b-42d3-a456-426614174000";
 
@@ -69,6 +69,47 @@ describe("createTaskSchema", () => {
     expect(createTaskSchema.safeParse({ ...base, dueDate: "2026-02-31" }).success).toBe(false);
     expect(createTaskSchema.safeParse({ ...base, priority: "asap" }).success).toBe(false);
     expect(createTaskSchema.safeParse({ ...base, submissionKey: "x y" }).success).toBe(false);
+  });
+});
+
+describe("request coverage", () => {
+  it("leaves an unclassified request alone, and maps included and add-on onto the existing columns", () => {
+    expect(requestBillingColumns(null, null)).toEqual({});
+    expect(requestBillingColumns("included", null)).toEqual({ coverage: "included", billable_flag: false, counts_toward_quota: true, estimated_charge: 0 });
+    expect(requestBillingColumns("addon", 150)).toEqual({ coverage: "addon", billable_flag: true, counts_toward_quota: false, estimated_charge: 150 });
+    expect(requestBillingColumns("addon", null)).toMatchObject({ estimated_charge: 0, billable_flag: true });
+  });
+  it("accepts included without a price, an add-on with a price, and a status", () => {
+    const included = createRequestSchema.parse({ clientId: uuid, title: "Update hours", coverage: "included", status: "in_review" });
+    expect(included.coverage).toBe("included");
+    expect(included.price).toBeNull();
+    expect(included.status).toBe("in_review");
+    const addon = createRequestSchema.parse({ clientId: uuid, title: "New page", coverage: "addon", price: 150.5 });
+    expect(addon.price).toBe(150.5);
+  });
+  it("rejects a price on an included request and an unknown status", () => {
+    expect(createRequestSchema.safeParse({ clientId: uuid, title: "Update hours", coverage: "included", price: 40 }).success).toBe(false);
+    expect(createRequestSchema.safeParse({ clientId: uuid, title: "Update hours", status: "done" }).success).toBe(false);
+  });
+  it("still accepts the owner form, which does not send coverage", () => {
+    const r = createRequestSchema.parse({ clientId: uuid, title: "Update hours" });
+    expect(r.coverage).toBeNull();
+    expect(r.price).toBeNull();
+    expect(r.status).toBeNull();
+  });
+});
+
+describe("updateTaskSchema", () => {
+  it("changes only the fields that were sent", () => {
+    const r = updateTaskSchema.parse({ id: uuid, status: "in_progress" });
+    expect(r.status).toBe("in_progress");
+    expect(r.title).toBeUndefined();
+    expect(r.clientId).toBeUndefined();
+    expect(r.dueDate).toBeUndefined();
+    expect(r.description).toBeUndefined();
+  });
+  it("rejects an empty patch", () => {
+    expect(updateTaskSchema.safeParse({ id: uuid }).success).toBe(false);
   });
 });
 

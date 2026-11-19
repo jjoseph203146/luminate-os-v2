@@ -26,7 +26,7 @@ vi.mock("./repo", () => ({
   deleteLead: mocks.deleteLead,
 }));
 
-import { createLead, deleteLead, MANUAL_DUPLICATE_WINDOW_MS, setLeadFollowUp, setLeadStage, updateLead } from "./service";
+import { createLead, deleteLead, MANUAL_DUPLICATE_WINDOW_MS, patchLead, setLeadFollowUp, setLeadStage, updateLead } from "./service";
 import { PermissionError, RateLimitError, RuleError, ValidationError } from "@/platform/errors";
 import type { Actor } from "@/platform/auth/types";
 
@@ -173,6 +173,30 @@ describe("deleteLead", () => {
     expect(mocks.deleteLead).toHaveBeenCalledWith({}, ID);
     expect(mocks.writeAudit).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: "lead.deleted", entityId: ID, before: { stage: "new_lead" } }));
     expectNoContactDetails();
+  });
+});
+
+describe("the bot actor", () => {
+  const bot = () => ({ type: "bot" as const, name: `bot-${++n}`, ip: "203.0.113.9" });
+  it("creates a lead and stamps the audit row with the bot name, without contact details", async () => {
+    const actor = bot();
+    const r = await createLead(actor, form, NOW);
+    expect(r).toEqual({ id: ID, duplicate: false });
+    expect(mocks.writeAudit).toHaveBeenCalledWith(actor, expect.objectContaining({ action: "lead.created", after: { stage: "new_lead", source: "Referral", hasValue: true, bot: actor.name } }));
+    expectNoContactDetails();
+  });
+  it("patches only the fields it was sent", async () => {
+    const actor = bot();
+    const r = await patchLead(actor, { id: ID, source: "Cold Outreach", stage: "in_discussion" }, NOW);
+    expect(r.changed).toEqual(["source", "stage"]);
+    expect(mocks.updateLead).toHaveBeenCalledWith({}, ID, { source: "Cold Outreach" });
+    expect(mocks.setLeadStatus).toHaveBeenCalledWith({}, ID, "contacted");
+    expect(mocks.writeAudit.mock.calls.map((c) => c[1].action)).toEqual(["lead.updated", "lead.stage_changed"]);
+    expect(mocks.writeAudit.mock.calls[0]?.[1].after).toMatchObject({ changed: ["source"], bot: actor.name });
+  });
+  it("cannot delete a lead", async () => {
+    await expect(deleteLead(bot(), { id: ID, confirm: "yes" }, NOW)).rejects.toBeInstanceOf(PermissionError);
+    expect(mocks.deleteLead).not.toHaveBeenCalled();
   });
 });
 

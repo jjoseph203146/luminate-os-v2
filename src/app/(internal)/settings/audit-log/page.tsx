@@ -3,6 +3,7 @@ import { BTN_SMALL, Card, INPUT } from "@/ui/forms";
 import { Pill } from "@/ui/kit";
 import { requireOwner } from "@/platform/auth/actor";
 import { formatInTimeZone } from "@/platform/calendar/business-days";
+import { actorLabel } from "@/platform/audit/audit";
 import { listAuditLog } from "@/domains/admin/service";
 
 export const metadata = { title: "Audit log" };
@@ -48,7 +49,7 @@ export default async function AuditLogPage({ searchParams }: { searchParams: Pro
                 <span className="min-w-0 flex-1 break-words text-[14px] font-medium">{r.action}</span>
               </div>
               <div className="mt-1 break-words font-mono text-[12px] text-dim">
-                {formatInTimeZone(r.occurredAt, result.timeZone)} · {r.actorType}
+                {formatInTimeZone(r.occurredAt, result.timeZone)} · {actorLabel(r.actorType, r.after)}
                 {r.requestIp ? ` (${r.requestIp})` : ""}
                 {r.entityId ? ` · ${r.entityId}` : ""}
               </div>

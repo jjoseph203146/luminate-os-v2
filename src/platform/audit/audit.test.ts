@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildAuditRow, minimizeForAudit } from "./audit";
+import { actorLabel, buildAuditRow, minimizeForAudit } from "./audit";
+import { stampActor } from "./stamp";
 import type { Actor } from "@/platform/auth/types";
 
 const owner: Actor = { type: "owner", userId: "11111111-1111-4111-8111-111111111111", email: "o@example.com", ip: "203.0.113.5" };
@@ -32,8 +33,23 @@ describe("buildAuditRow", () => {
     const row = buildAuditRow(owner, { action: "x.updated", entityType: "x", entityId: "1", before: { a: 1 }, after: { a: 2 } });
     expect(row).toMatchObject({ actor_type: "owner", actor_id: owner.type === "owner" ? owner.userId : null, request_ip: "203.0.113.5", entity_id: "1" });
   });
-  it("records system actors without an id", () => {
+  it("records system actors without an id or a bot name", () => {
     const row = buildAuditRow({ type: "system", name: "jobs" }, { action: "job.run", entityType: "job" });
     expect(row).toMatchObject({ actor_type: "system", actor_id: null, request_ip: null, entity_id: null });
+    expect(row.actor_name).toBeUndefined();
+  });
+  it("records which bot acted, and the request address", () => {
+    const bot: Actor = { type: "bot", name: "daily-crm", ip: "203.0.113.9" };
+    const row = buildAuditRow(bot, { action: "lead.created", entityType: "lead", entityId: "1", after: stampActor(bot, { stage: "new_lead" }) });
+    expect(row).toMatchObject({ actor_type: "bot", actor_id: null, actor_name: "daily-crm", request_ip: "203.0.113.9", after: { stage: "new_lead", bot: "daily-crm" } });
+  });
+});
+
+describe("actorLabel", () => {
+  it("names the bot from the after payload and leaves other actors as they are", () => {
+    expect(actorLabel("bot", { bot: "daily-crm", stage: "new_lead" })).toBe("bot (daily-crm)");
+    expect(actorLabel("bot", { stage: "new_lead" })).toBe("bot");
+    expect(actorLabel("owner", { bot: "daily-crm" })).toBe("owner");
+    expect(actorLabel("bot", null)).toBe("bot");
   });
 });

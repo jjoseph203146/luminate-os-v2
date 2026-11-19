@@ -39,6 +39,7 @@ const others: Actor[] = [
   { type: "ai", name: "assistant" },
   { type: "system", name: "jobs" },
   { type: "integration", name: "stripe" },
+  { type: "bot", name: "daily-crm", ip: null },
 ];
 const NOW = new Date("2026-11-06T10:00:00.000Z");
 

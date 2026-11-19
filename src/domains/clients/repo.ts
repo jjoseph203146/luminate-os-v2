@@ -287,6 +287,30 @@ export async function listProjectUrls(db: Db, clientId: string): Promise<Project
   return must("read projects", await db.from("projects").select("id,production_url,created_at").eq("client_id", clientId).order("created_at"));
 }
 
+export async function clientExists(db: Db, id: string): Promise<boolean> {
+  const { data, error } = await db.from("clients").select("id").eq("id", id).maybeSingle();
+  if (error) throw new RepoError("Could not read the client");
+  return data !== null;
+}
+
+export async function insertNote(db: Db, clientId: string, content: string): Promise<{ id: string }> {
+  const res = await db.from("client_notes").insert({ client_id: clientId, content }).select("id").single();
+  if (res.error || !res.data) throw new RepoError("Could not save the note");
+  return { id: res.data.id };
+}
+
+export async function getNote(db: Db, id: string): Promise<{ id: string; client_id: string; content: string } | null> {
+  const { data, error } = await db.from("client_notes").select("id,client_id,content").eq("id", id).maybeSingle();
+  if (error) throw new RepoError("Could not read the note");
+  return data;
+}
+
+export async function updateNote(db: Db, id: string, content: string): Promise<boolean> {
+  const res = await db.from("client_notes").update({ content }).eq("id", id).select("id");
+  if (res.error) throw new RepoError("Could not save the note");
+  return (res.data ?? []).length > 0;
+}
+
 export async function setProjectProductionUrl(db: Db, clientId: string, projectId: string, url: string | null): Promise<boolean> {
   const res = await db.from("projects").update({ production_url: url }).eq("id", projectId).eq("client_id", clientId).select("id");
   if (res.error) throw new RepoError("Could not save the project address");

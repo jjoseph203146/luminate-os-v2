@@ -29,6 +29,8 @@ The key travels in the URL, because connector screens often accept only a URL. U
 ## Rotating or switching off
 Change `MCP_API_KEY` in Vercel and redeploy, then update the URL in the connector. Remove the variable (or shorten it below 32 characters) to switch the connector off entirely.
 
+Writes are a different API, with a different key and a `bot` actor. This connector and the `ai` actor stay read-only. See [18-bot-write-api](18-bot-write-api.md).
+
 ## Adding it
 - **Claude:** Settings > Connectors > Add custom connector. Name: Luminate OS. URL: the URL above. Authentication: **No sign-in**. Leave the OAuth client choice alone.
 - **ChatGPT:** add a custom connector (MCP) with the same URL. Whether a plan accepts a key in the URL, or only OAuth, is controlled by OpenAI.

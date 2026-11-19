@@ -13,9 +13,9 @@ import { buildCsp } from "@/platform/security/csp";
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
-  // The scheduler and the AI assistant connector authenticate with their own keys, and the Stripe webhook with
-  // Stripe's signature: none of them has a session or needs a CSP.
-  if (pathname === "/api/jobs/tick" || pathname === "/api/mcp" || pathname === "/api/webhooks/stripe") return NextResponse.next();
+  // The scheduler, the AI assistant connector and the bot write API authenticate with their own keys, and the
+  // Stripe webhook with Stripe's signature: none of them has a session or needs a CSP.
+  if (pathname === "/api/jobs/tick" || pathname === "/api/mcp" || pathname === "/api/bot/writes" || pathname === "/api/webhooks/stripe") return NextResponse.next();
 
   const nonce = btoa(crypto.randomUUID());
   const csp = buildCsp({ nonce, isDev: process.env.NODE_ENV === "development" });
