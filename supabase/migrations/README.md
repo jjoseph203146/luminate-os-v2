@@ -18,5 +18,7 @@ not been applied to staging or production. Apply them with the Supabase CLI,
 staging first, and production only with the owner's approval for that
 migration. 0011 does not change `leads_status_check`. The Won backfill is not
 part of either migration. Run it separately, and only as a dry run until the
-plan has been checked (`npm run backfill:won -- --dry-run`). It refuses
-`APP_ENV=production`.
+plan has been checked (`APP_ENV=staging npm run backfill:won -- --dry-run`).
+`--apply` also needs `--confirm-url` equal to `NEXT_PUBLIC_SUPABASE_URL`, or
+`BACKFILL_ALLOWED_PROJECT_REF` set to that project's ref. It refuses
+`APP_ENV=production` and an unset `APP_ENV`.

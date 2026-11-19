@@ -32,7 +32,7 @@ Use the `www` host. The bare domain redirects, and clients do not follow redirec
 | Operation | What it does | Permission |
 | --- | --- | --- |
 | `lead.create` | New lead, stage New lead | `leads.write` |
-| `lead.update` | Change only the lead fields that were sent, including `stage`, `nextStep`, `nextStepOn`, `lostReason`, `lastTouchAt`, `kind` and `campaign` | `leads.write` |
+| `lead.update` | Change only the lead fields that were sent, including `stage` (not Won), `nextStep`, `nextStepOn`, `lostReason`, `lastTouchAt`, `kind` and `campaign` | `leads.write` |
 | `note.create` | Internal note on a client | `notes.write` |
 | `note.update` | Replace that note's text, after the previous text is stored | `notes.write` |
 | `request.create` | Change request for a client | `work.write` |
@@ -42,11 +42,13 @@ Use the `www` host. The bare domain redirects, and clients do not follow redirec
 
 The `bot` actor has those three permissions and no others (`src/platform/auth/permissions.ts`). It cannot delete a lead (`growth.write` stays with the owner), archive a client, edit websites, send invoices, record payments, change settings or call the assistant tools. The `ai` actor still has no write permission.
 
-`lead.update` is a partial edit on purpose. The read-only connector does not return emails, phones or notes, so sending a full lead form back would wipe them. Omit a field to leave it. `stage` uses the same names as the Growth screen: `new_lead`, `in_discussion`, `proposal_sent`, `won`, `lost`.
+`lead.update` is a partial edit on purpose. The read-only connector does not return emails, phones or notes, so sending a full lead form back would wipe them. Omit a field to leave it. `stage` uses the same names as the Growth screen except Won: `new_lead`, `in_discussion`, `proposal_sent`, `lost`.
 
-`nextStep` (up to 200 characters), `nextStepOn` (a date), `lostReason` (`price`, `timing`, `competitor`, `unresponsive`, `not_fit`, `other`), `lastTouchAt` (a date and time), `kind` (`inbound` or `outbound`) and `campaign` (up to 80 characters) are optional. Omit one to leave it. These columns come from migration 0011. Until that migration is visible, setting one of them fails and the lead is not given a half-saved pipeline value.
+A bot cannot set `stage` to `won` and cannot send `clientId`, on `lead.update` or on `lead.create`. Won links or creates a client, and only the owner does that, in the app, after ticking that the contract is signed and the deposit is paid. When a bot learns those two facts, it writes them in a lead note (or tells Ops). The owner then marks the lead Won.
 
-Won still means the contract is signed and the deposit is paid. Send `contractSigned: true` and `depositPaid: true` with `stage: "won"`. The same rule as the Growth screen then links an existing client or creates one. It does not create an invoice or call Stripe. Send `clientId` only together with Won, when more than one client matches. Lost still needs `lostReason` when the lead does not already have one.
+`nextStep` (up to 200 characters), `nextStepOn` (a date), `lostReason` (`price`, `timing`, `competitor`, `unresponsive`, `not_fit`, `other`), `lastTouchAt` (a date and time), `kind` (`inbound` or `outbound`) and `campaign` (up to 80 characters) are optional. Omit one to leave it. These columns come from migration 0011. Until that migration is visible, setting one of them on a create or an update fails with a message to apply 0011, and the lead is not given a half-saved pipeline value.
+
+Lost still needs `lostReason` when the lead does not already have one.
 
 Replacing `notes` stores the previous text in `lead_activities` first. Replacing a client note (`note.update`) stores the previous text in `client_note_revisions` first. The audit row records the length, not the text. If migration 0011 is not visible, the replacement is refused and the current text stays.
 

@@ -147,6 +147,14 @@ describe("createLead", () => {
     expect(mocks.insertManualLead).not.toHaveBeenCalled();
   });
 
+  it("says to apply migration 0011 when a new pipeline field cannot be stored", async () => {
+    mocks.insertManualLead.mockRejectedValueOnce(new mocks.PipelineNotReadyError());
+    const err = await createLead(owner(), { ...form, nextStep: "Call them", kind: "inbound" }, NOW).catch((e) => e);
+    expect(err).toBeInstanceOf(RuleError);
+    expect((err as RuleError).message).toContain("0011");
+    expect(mocks.writeAudit).not.toHaveBeenCalled();
+  });
+
   it("slows a flood of changes", async () => {
     const o = owner();
     for (let i = 0; i < 30; i++) await createLead(o, form, NOW);
@@ -244,6 +252,21 @@ describe("the bot actor", () => {
     expect(mocks.writeAudit.mock.calls.map((c) => c[1].action)).toEqual(["lead.updated", "lead.stage_changed"]);
     expect(mocks.writeAudit.mock.calls[0]?.[1].after).toMatchObject({ changed: ["source"], bot: actor.name });
   });
+  it("cannot mark a lead Won or attach a client", async () => {
+    const actor = bot();
+    const won = { id: ID, stage: "won", contractSigned: true, depositPaid: true };
+    await expect(patchLead(actor, won, NOW)).rejects.toThrow(/cannot mark a lead Won/);
+    await expect(patchLead(actor, { id: ID, clientId: CLIENT }, NOW)).rejects.toThrow(/cannot mark a lead Won/);
+    await expect(createLead(actor, { ...form, stage: "won" }, NOW)).rejects.toThrow(/cannot mark a lead Won/);
+    await expect(createLead(actor, { ...form, clientId: CLIENT }, NOW)).rejects.toThrow(/cannot mark a lead Won/);
+    await expect(setLeadStage(actor, { id: ID, stage: "won", contractSigned: "yes", depositPaid: "yes" }, NOW)).rejects.toThrow(/cannot mark a lead Won/);
+    expect(mocks.insertManualLead).not.toHaveBeenCalled();
+    expect(mocks.insertClient).not.toHaveBeenCalled();
+    expect(mocks.setLeadClient).not.toHaveBeenCalled();
+    expect(mocks.setLeadStatus).not.toHaveBeenCalled();
+    expect(mocks.writeAudit).not.toHaveBeenCalled();
+  });
+
   it("cannot delete a lead", async () => {
     await expect(deleteLead(bot(), { id: ID, confirm: "yes" }, NOW)).rejects.toBeInstanceOf(PermissionError);
     expect(mocks.deleteLead).not.toHaveBeenCalled();
@@ -353,13 +376,23 @@ describe("pipeline edits", () => {
 describe("runWonBackfill", () => {
   const system = { type: "system" as const, name: "won-backfill" };
   let previousEnv: string | undefined;
+  let previousUrl: string | undefined;
+  let previousRefs: string | undefined;
   beforeEach(() => {
     previousEnv = process.env.APP_ENV;
+    previousUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    previousRefs = process.env.BACKFILL_ALLOWED_PROJECT_REF;
     process.env.APP_ENV = "staging";
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    delete process.env.BACKFILL_ALLOWED_PROJECT_REF;
   });
   afterEach(() => {
     if (previousEnv === undefined) delete process.env.APP_ENV;
     else process.env.APP_ENV = previousEnv;
+    if (previousUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    else process.env.NEXT_PUBLIC_SUPABASE_URL = previousUrl;
+    if (previousRefs === undefined) delete process.env.BACKFILL_ALLOWED_PROJECT_REF;
+    else process.env.BACKFILL_ALLOWED_PROJECT_REF = previousRefs;
   });
 
   it("refuses production before it reads, and refuses the bot", async () => {
@@ -384,7 +417,19 @@ describe("runWonBackfill", () => {
     expect(r.roster.clients[0]?.businessName).toBe("Nova Barbershop");
   });
 
+  it("apply refuses until the database URL is confirmed, and does not read", async () => {
+    mocks.pipelineReady.mockResolvedValue(true);
+    await expect(runWonBackfill(system, { apply: true })).rejects.toThrow(/Refusing to write/);
+    expect(mocks.listLeadsForBackfill).not.toHaveBeenCalled();
+    process.env.APP_ENV = "production";
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://stagingref.supabase.co";
+    await expect(runWonBackfill(system, { apply: true, confirmUrl: "https://stagingref.supabase.co" })).rejects.toThrow(/production/);
+    expect(mocks.listLeadsForBackfill).not.toHaveBeenCalled();
+  });
+
   it("apply creates a client for an unlinked Won lead", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://stagingref.supabase.co";
+    process.env.BACKFILL_ALLOWED_PROJECT_REF = "stagingref";
     mocks.pipelineReady.mockResolvedValue(true);
     mocks.listClientCandidates.mockResolvedValue([]);
     mocks.listLeadsForBackfill.mockResolvedValue([{ id: ID, name: "Ada", businessName: "New Co", email: null, phone: null, stage: "won", clientId: null }]);

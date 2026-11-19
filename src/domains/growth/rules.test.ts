@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertBackfillEnvironment, changedLeadFields, clientFromLead, decideClientLink, dueNow, followUpNote, followUpShort, followUpState, isPayingClient, leadSavedMessage, planWonBackfill, sortOpen, STAGE_TO_STATUS, stageMessage, stageOf, STATUS_TO_STAGE, statusOf, summarize, type BackfillClient, type BackfillLead, type LeadFields, type WonBackfillPlan } from "./rules";
+import { assertBackfillEnvironment, assertBackfillWriteAllowed, botTriesToWin, changedLeadFields, clientFromLead, confirmUrlFromArgv, decideClientLink, dueNow, followUpNote, followUpShort, followUpState, isPayingClient, leadSavedMessage, planWonBackfill, projectRefFromSupabaseUrl, sortOpen, STAGE_TO_STATUS, stageMessage, stageOf, STATUS_TO_STAGE, statusOf, summarize, type BackfillClient, type BackfillLead, type LeadFields, type WonBackfillPlan } from "./rules";
 import { LEAD_STATUSES, STAGES } from "./types";
 import type { Lead } from "./types";
 
@@ -197,6 +197,44 @@ describe("assertBackfillEnvironment", () => {
     expect(assertBackfillEnvironment("staging")).toBe("staging");
     expect(() => assertBackfillEnvironment("production")).toThrow(/production/);
     expect(() => assertBackfillEnvironment(undefined)).toThrow(/production/);
+  });
+});
+
+describe("botTriesToWin", () => {
+  it("catches Won and a client id, and ignores an empty client id", () => {
+    expect(botTriesToWin({ stage: "won" })).toBe(true);
+    expect(botTriesToWin({ stage: " Won " })).toBe(true);
+    expect(botTriesToWin({ clientId: "22222222-2222-4222-8222-222222222222" })).toBe(true);
+    expect(botTriesToWin({ stage: "in_discussion", clientId: "" })).toBe(false);
+    expect(botTriesToWin({ stage: "in_discussion", clientId: null })).toBe(false);
+    expect(botTriesToWin({ stage: "lost" })).toBe(false);
+  });
+});
+
+const STAGING_URL = "https://stagingref.supabase.co";
+
+describe("assertBackfillWriteAllowed", () => {
+  it("reads a project ref and ignores a trailing slash", () => {
+    expect(projectRefFromSupabaseUrl(STAGING_URL)).toBe("stagingref");
+    expect(projectRefFromSupabaseUrl("http://127.0.0.1:54321")).toBeNull();
+  });
+
+  it("allows --confirm-url or an allowlisted ref, and still refuses production", () => {
+    expect(assertBackfillWriteAllowed({ appEnv: "staging", supabaseUrl: STAGING_URL, confirmUrl: `${STAGING_URL}/` })).toBe("staging");
+    expect(assertBackfillWriteAllowed({ appEnv: "local", supabaseUrl: STAGING_URL, allowedProjectRefs: "other, stagingref" })).toBe("local");
+    expect(() => assertBackfillWriteAllowed({ appEnv: "staging", supabaseUrl: STAGING_URL })).toThrow(/Refusing to write/);
+    expect(() => assertBackfillWriteAllowed({ appEnv: "staging", supabaseUrl: STAGING_URL, confirmUrl: "https://other.supabase.co" })).toThrow(/Refusing to write/);
+    expect(() => assertBackfillWriteAllowed({ appEnv: "staging", supabaseUrl: STAGING_URL, allowedProjectRefs: "other" })).toThrow(/Refusing to write/);
+    expect(() => assertBackfillWriteAllowed({ appEnv: "production", supabaseUrl: STAGING_URL, confirmUrl: STAGING_URL })).toThrow(/production/);
+    expect(() => assertBackfillWriteAllowed({ appEnv: undefined, supabaseUrl: STAGING_URL, allowedProjectRefs: "stagingref" })).toThrow(/production/);
+    expect(() => assertBackfillWriteAllowed({ appEnv: "staging", supabaseUrl: undefined, confirmUrl: STAGING_URL })).toThrow(/NEXT_PUBLIC_SUPABASE_URL/);
+  });
+
+  it("reads one --confirm-url flag", () => {
+    expect(confirmUrlFromArgv(["node", "script", "--apply"])).toBeUndefined();
+    expect(confirmUrlFromArgv(["--confirm-url=https://stagingref.supabase.co"])).toBe("https://stagingref.supabase.co");
+    expect(() => confirmUrlFromArgv(["--confirm-url=", "--confirm-url=https://a.supabase.co"])).toThrow(/once/);
+    expect(() => confirmUrlFromArgv(["--confirm-url="])).toThrow(/NEXT_PUBLIC_SUPABASE_URL/);
   });
 });
 

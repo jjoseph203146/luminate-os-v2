@@ -41,7 +41,9 @@ Stage changes write `stage_changed_at` and a `lead_activities` row of kind `stag
 
 ## Bot write API
 
-`lead.update` may set `nextStep`, `nextStepOn`, `lostReason`, `lastTouchAt`, `kind` and `campaign`, and still may set `stage`. Won from the bot uses the same gate (`contractSigned` and `depositPaid` both true) and the same link-or-create rule. The bot still cannot delete a lead, and it has no billing, Stripe, invoice, or `growth.backfill` permission.
+`lead.update` may set `nextStep`, `nextStepOn`, `lostReason`, `lastTouchAt`, `kind`, `campaign`, and a stage other than Won. A bot cannot send `stage: "won"` or `clientId` on `lead.update` or `lead.create`. It records a signed contract and a paid deposit in a lead note. The owner then ticks Won in the app, which is what links or creates the client. The bot still cannot delete a lead, and it has no billing, Stripe, invoice, or `growth.backfill` permission.
+
+Creating a lead with any of the new pipeline fields set, before migration 0011 is visible, returns the same "apply migration 0011" message as the other writes that need those columns. The lead is not saved.
 
 `note.update` writes the previous text to `client_note_revisions` before replacing it. If that table is missing, the note is not changed.
 
@@ -70,11 +72,14 @@ APP_ENV=staging npm run backfill:won -- --dry-run
 # The same thing: dry run is the default.
 APP_ENV=staging npm run backfill:won
 
-# After the plan looks right. Still refuses APP_ENV=production or an unset APP_ENV.
-APP_ENV=staging npm run backfill:won -- --apply
+# After the plan looks right. --confirm-url must equal NEXT_PUBLIC_SUPABASE_URL.
+APP_ENV=staging npm run backfill:won -- --apply --confirm-url="$NEXT_PUBLIC_SUPABASE_URL"
+
+# Or allow the project ref (the subdomain of <ref>.supabase.co) instead of --confirm-url.
+APP_ENV=staging BACKFILL_ALLOWED_PROJECT_REF=<staging-ref> npm run backfill:won -- --apply
 ```
 
-`APP_ENV` must be `local` or `staging`. Unset and `production` both refuse, before any read. That check does not prove the Supabase URL is staging. The variables it uses are `APP_ENV`, `NEXT_PUBLIC_SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY`. This change does not set them.
+`APP_ENV` must be `local` or `staging`. Unset and `production` both refuse, before any read, even if `--confirm-url` matches. `--apply` also refuses unless `--confirm-url` equals `NEXT_PUBLIC_SUPABASE_URL` (a trailing slash does not matter) or `BACKFILL_ALLOWED_PROJECT_REF` lists that URL's project ref. Either confirmation is enough. This change does not set those variables. The script also uses `SUPABASE_SERVICE_ROLE_KEY` to connect. Do not point the URL or the key at production.
 
 A linked lead that loses a race leaves the extra client in place and records `linked: false` on that client. It does not delete the client.
 

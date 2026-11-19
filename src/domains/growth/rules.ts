@@ -275,6 +275,84 @@ export function assertBackfillEnvironment(appEnv: string | undefined): "local" |
   throw new Error("The Won backfill runs only when APP_ENV is local or staging. It does not run against production.");
 }
 
+/** A bot must not mark Won or attach a client. The owner does that in the app. */
+export const BOT_CANNOT_WIN = "A bot cannot mark a lead Won or attach a client. Record the signed contract and the paid deposit in a lead note. The owner marks Won in the app.";
+
+/** True when a bot payload tries to set stage Won or a client id. Empty and null client ids do not count. */
+export function botTriesToWin(raw: unknown): boolean {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+  const row = raw as Record<string, unknown>;
+  if (typeof row.stage === "string" && row.stage.trim().toLowerCase() === "won") return true;
+  if (!Object.prototype.hasOwnProperty.call(row, "clientId")) return false;
+  const id = row.clientId;
+  if (id === null || id === undefined) return false;
+  if (typeof id === "string" && id.trim() === "") return false;
+  return true;
+}
+
+/** `https://<ref>.supabase.co` → `<ref>`. Local and other hosts have no ref. */
+export function projectRefFromSupabaseUrl(url: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url.trim());
+  } catch {
+    return null;
+  }
+  const match = /^([a-z0-9-]+)\.supabase\.co$/.exec(parsed.hostname.toLowerCase());
+  return match?.[1] ?? null;
+}
+
+function canonicalSupabaseUrl(url: string): string | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url.trim());
+  } catch {
+    return null;
+  }
+  const path = parsed.pathname.replace(/\/+$/, "");
+  return `${parsed.protocol}//${parsed.host}${path}`;
+}
+
+/**
+ * `--apply` may write only after APP_ENV is local or staging, and after the caller confirms the database.
+ * Confirmation is either `--confirm-url` equal to NEXT_PUBLIC_SUPABASE_URL, or BACKFILL_ALLOWED_PROJECT_REF
+ * containing that URL's project ref. Production and an unset APP_ENV still refuse, even when the URL matches.
+ */
+export function assertBackfillWriteAllowed(input: {
+  appEnv: string | undefined;
+  supabaseUrl: string | undefined;
+  confirmUrl?: string;
+  allowedProjectRefs?: string;
+}): "local" | "staging" {
+  const env = assertBackfillEnvironment(input.appEnv);
+  const expected = input.supabaseUrl ? canonicalSupabaseUrl(input.supabaseUrl) : null;
+  if (!expected) {
+    throw new Error("Refusing to write. NEXT_PUBLIC_SUPABASE_URL is missing or not a URL. The Won backfill does not run against production.");
+  }
+  const confirm = input.confirmUrl ? canonicalSupabaseUrl(input.confirmUrl) : null;
+  const urlMatches = confirm !== null && confirm === expected;
+  const ref = projectRefFromSupabaseUrl(expected);
+  const allowed = (input.allowedProjectRefs ?? "")
+    .split(",")
+    .map((part) => part.trim().toLowerCase())
+    .filter(Boolean);
+  const refAllowed = ref !== null && allowed.includes(ref);
+  if (!urlMatches && !refAllowed) {
+    throw new Error("Refusing to write. Pass --confirm-url equal to NEXT_PUBLIC_SUPABASE_URL, or set BACKFILL_ALLOWED_PROJECT_REF to this project's ref. The Won backfill does not run against production.");
+  }
+  return env;
+}
+
+/** The value of a single `--confirm-url=<url>` argument, or undefined when it was not passed. */
+export function confirmUrlFromArgv(argv: readonly string[]): string | undefined {
+  const found = argv.filter((arg) => arg.startsWith("--confirm-url="));
+  if (found.length > 1) throw new Error("Pass --confirm-url once.");
+  if (found.length === 0) return undefined;
+  const value = found[0]!.slice("--confirm-url=".length).trim();
+  if (!value) throw new Error("Pass --confirm-url equal to NEXT_PUBLIC_SUPABASE_URL.");
+  return value;
+}
+
 export interface BackfillClient extends ClientCandidate {
   paying: boolean;
 }

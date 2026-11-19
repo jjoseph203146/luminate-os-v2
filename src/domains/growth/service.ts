@@ -11,6 +11,9 @@ import { stampActor } from "@/platform/audit/stamp";
 import { getCalendar } from "@/domains/admin/service";
 import {
   assertBackfillEnvironment,
+  assertBackfillWriteAllowed,
+  BOT_CANNOT_WIN,
+  botTriesToWin,
   changedLeadFields,
   clientFromLead,
   decideClientLink,
@@ -111,9 +114,14 @@ function activityActor(actor: { type: string; name?: string }): { actorType: str
   return { actorType: actor.type, actorName: null };
 }
 
+function assertBotLeavesWon(actor: Actor, raw: unknown): void {
+  if (actor.type === "bot" && botTriesToWin(raw)) throw new RuleError(BOT_CANNOT_WIN);
+}
+
 /** Adds a lead by hand. New leads start at "New lead". */
 export async function createLead(actor: Actor, raw: unknown, now: Date = new Date()): Promise<SavedLead> {
   assertLeadWriter(actor);
+  assertBotLeavesWon(actor, raw);
   const input = parseInput(createLeadSchema, raw);
   checkRate(actor, now);
   const db = await leadDb(actor);
@@ -122,7 +130,12 @@ export async function createLead(actor: Actor, raw: unknown, now: Date = new Dat
   if (existing) return { id: existing, duplicate: true };
 
   const stage: Stage = "new_lead";
-  const id = await repo.insertManualLead(db, input, statusOf(stage));
+  let id: string;
+  try {
+    id = await repo.insertManualLead(db, input, statusOf(stage));
+  } catch (error) {
+    migrationOrThrow(error);
+  }
   // Contact details stay out of the audit log; the lead row holds them.
   await writeAudit(actor, { action: "lead.created", entityType: "lead", entityId: id, after: stampActor(actor, { stage, source: input.source, hasValue: input.value !== null }) });
   return { id, duplicate: false };
@@ -186,6 +199,7 @@ function noteAudit(changed: readonly string[], previous: string | null, historyI
  */
 export async function patchLead(actor: Actor, raw: unknown, now: Date = new Date()): Promise<{ id: string; changed: string[] }> {
   assertLeadWriter(actor);
+  assertBotLeavesWon(actor, raw);
   const input = parseInput(patchLeadSchema, raw);
   checkRate(actor, now);
   const db = await leadDb(actor);
@@ -250,6 +264,7 @@ export interface StageChange {
 /** Moves a lead to another stage. Saves the old app's status value, which is what the database accepts. */
 export async function setLeadStage(actor: Actor, raw: unknown, now: Date = new Date()): Promise<StageChange> {
   assertLeadWriter(actor);
+  assertBotLeavesWon(actor, raw);
   const input = parseInput(leadStageSchema, raw);
   checkRate(actor, now);
   const db = await leadDb(actor);
@@ -472,12 +487,19 @@ export interface WonBackfillResult extends WonBackfillPlan {
  * Refuses to run unless APP_ENV is local or staging, before it reads.
  * The bot cannot call this.
  */
-export async function runWonBackfill(actor: Actor, options: { apply: boolean }, now: Date = new Date()): Promise<WonBackfillResult> {
+export async function runWonBackfill(actor: Actor, options: { apply: boolean; confirmUrl?: string }, now: Date = new Date()): Promise<WonBackfillResult> {
   assertCan(actor, "growth.backfill");
   if (actor.type !== "owner" && !(actor.type === "system" && actor.name === BACKFILL_ACTOR)) throw new PermissionError();
   let target: "local" | "staging";
   try {
-    target = assertBackfillEnvironment(process.env.APP_ENV);
+    target = options.apply
+      ? assertBackfillWriteAllowed({
+          appEnv: process.env.APP_ENV,
+          supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+          confirmUrl: options.confirmUrl,
+          allowedProjectRefs: process.env.BACKFILL_ALLOWED_PROJECT_REF,
+        })
+      : assertBackfillEnvironment(process.env.APP_ENV);
   } catch (error) {
     throw new RuleError(error instanceof Error ? error.message : "Refusing to run the Won backfill.");
   }
