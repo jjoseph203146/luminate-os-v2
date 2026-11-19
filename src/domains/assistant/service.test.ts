@@ -75,7 +75,8 @@ describe("callTool", () => {
     mocks.run.mockResolvedValue({ rows: "x".repeat(MAX_RESULT_CHARS + 10) });
     const r = await callTool(ai, "echo", { name: "a" });
     expect(r).toMatchObject({ ok: true, truncated: true });
-  });
+    // The answer is 60k characters. On a busy CI runner this has crossed the 5s default.
+  }, 15_000);
   it("writes an audit row for every call, and still answers if the audit write fails", async () => {
     await callTool(ai, "echo", { name: "Acme" });
     expect(mocks.writeAudit).toHaveBeenCalledWith(ai, expect.objectContaining({ action: "assistant.tool_called", entityType: "assistant_tool", entityId: "echo", after: { args: { name: "Acme" }, ok: true } }));
