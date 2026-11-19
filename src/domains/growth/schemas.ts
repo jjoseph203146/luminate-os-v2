@@ -73,6 +73,25 @@ export type CreateLeadInput = z.infer<typeof createLeadSchema>;
 export const updateLeadSchema = z.object({ id, ...fields });
 export type UpdateLeadInput = z.infer<typeof updateLeadSchema>;
 
+/** A partial edit. Omitted fields are left as they are. Used by the bot write API. */
+export const patchLeadSchema = z
+  .object({
+    id,
+    name: fields.name.optional(),
+    businessName: fields.businessName.optional(),
+    email: fields.email.optional(),
+    phone: fields.phone.optional(),
+    notes: fields.notes.optional(),
+    followUpDate: fields.followUpDate.optional(),
+    source: fields.source.optional(),
+    value: fields.value.optional(),
+    stage: z.enum(STAGES).optional(),
+  })
+  .refine((v) => v.stage !== undefined || v.name !== undefined || v.businessName !== undefined || v.email !== undefined || v.phone !== undefined || v.notes !== undefined || v.followUpDate !== undefined || v.source !== undefined || v.value !== undefined, {
+    message: "Send at least one field to change.",
+  });
+export type PatchLeadInput = z.infer<typeof patchLeadSchema>;
+
 export const leadStageSchema = z.object({
   id,
   stage: z.preprocess((v) => str(v).trim(), z.enum(STAGES, "Pick a stage.")),

@@ -29,9 +29,31 @@ describe("the ai actor", () => {
     for (const p of ["assistant.read", "clients.read", "work.read", "growth.read", "monitoring.read", "calendar.read"] as const) expect(can(ai, p)).toBe(true);
   });
   it("cannot read Settings, write anything, run jobs, send pushes or see the audit log or users", () => {
-    for (const p of ["settings.read", "settings.write", "work.write", "users.manage", "audit.read", "jobs.run", "jobs.read", "notifications.send", "notifications.manage", "system.read", "growth.intake", "alerts.run"] as const) {
+    for (const p of ["settings.read", "settings.write", "work.write", "leads.write", "notes.write", "growth.write", "users.manage", "audit.read", "jobs.run", "jobs.read", "notifications.send", "notifications.manage", "system.read", "growth.intake", "alerts.run", "billing.tasks", "billing.ingest", "clients.write"] as const) {
       expect(can(ai, p)).toBe(false);
     }
+  });
+});
+
+describe("the bot actor", () => {
+  const bot: Actor = { type: "bot", name: "daily-crm", ip: null };
+  it("may write leads, notes and work, and nothing else", () => {
+    expect(can(bot, "leads.write")).toBe(true);
+    expect(can(bot, "notes.write")).toBe(true);
+    expect(can(bot, "work.write")).toBe(true);
+    for (const p of PERMISSIONS) {
+      if (p === "leads.write" || p === "notes.write" || p === "work.write") continue;
+      expect(can(bot, p)).toBe(false);
+    }
+  });
+  it("cannot delete leads, touch money, or use the read-only assistant permission", () => {
+    expect(can(bot, "growth.write")).toBe(false);
+    expect(can(bot, "billing.tasks")).toBe(false);
+    expect(can(bot, "billing.ingest")).toBe(false);
+    expect(can(bot, "billing.invoice_send")).toBe(false);
+    expect(can(bot, "clients.write")).toBe(false);
+    expect(can(bot, "assistant.read")).toBe(false);
+    expect(() => assertCan(bot, "growth.write")).toThrow(PermissionError);
   });
 });
 

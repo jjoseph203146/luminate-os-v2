@@ -52,6 +52,10 @@ export interface WorkOverview {
 
 export const REQUEST_PRIORITIES = ["low", "normal", "high", "urgent"] as const;
 export const REQUEST_SOURCES = ["email", "phone_call", "text_message", "in_person", "other"] as const;
+/** The values `requests_status_check` accepts. */
+export const REQUEST_STATUSES = ["new", "in_review", "in_progress", "waiting_on_client", "completed"] as const;
+/** included = in monthly care. addon = quoted separately. */
+export const REQUEST_COVERAGE = ["included", "addon"] as const;
 
 export const SOURCE_LABELS: Record<(typeof REQUEST_SOURCES)[number], string> = {
   email: "Email",
@@ -73,6 +77,11 @@ export interface CreatedRequest {
   displayId: string;
   /** True when an identical request was just created, so no second one was made. */
   duplicate: boolean;
+  /**
+   * Whether `requests.coverage` was stored. Null when the caller did not classify the request.
+   * False when the column is not in the database yet (migration 0010); the billable columns were still written.
+   */
+  coverageStored: boolean | null;
 }
 
 export interface CreatedTask {

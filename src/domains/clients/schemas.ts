@@ -9,6 +9,18 @@ const ticked = z
   .union([z.literal("on"), z.literal("true"), z.literal("1"), z.literal(""), z.undefined()])
   .transform((v) => v === "on" || v === "true" || v === "1");
 
+const noteContent = z.string().trim().min(1, "Write a note.").max(5000, "Use at most 5000 characters.");
+
+export const createNoteSchema = z.object({
+  clientId: id,
+  content: noteContent,
+});
+
+export const updateNoteSchema = z.object({
+  id: z.string().uuid("That note was not recognised."),
+  content: noteContent,
+});
+
 export const clientFlagSchema = z.object({
   clientId: id,
   flag: z.enum(["archived", "on_hold", "monitoring_paused"]),

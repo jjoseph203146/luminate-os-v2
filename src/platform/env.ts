@@ -62,6 +62,20 @@ export function getMcpKey(source: NodeJS.ProcessEnv = process.env): string | nul
   return r.success ? r.data.MCP_API_KEY : null;
 }
 
+const botWriteSchema = z.object({
+  BOT_WRITE_API_KEY: z.string().min(32),
+});
+
+/**
+ * The key the bot write API (POST /api/bot/writes) accepts. Null when unset or shorter than 32 characters:
+ * the API is then off. This is a different variable from MCP_API_KEY. If the two are set to the same value,
+ * the write API stays off (see checkBotWriteKey).
+ */
+export function getBotWriteKey(source: NodeJS.ProcessEnv = process.env): string | null {
+  const r = botWriteSchema.safeParse(source);
+  return r.success ? r.data.BOT_WRITE_API_KEY : null;
+}
+
 const pushSchema = z.object({
   VAPID_PUBLIC_KEY: z.string().min(40),
   VAPID_PRIVATE_KEY: z.string().min(20),
@@ -165,5 +179,6 @@ export function envChecks(source: NodeJS.ProcessEnv = process.env): EnvCheck[] {
     { name: "STRIPE_INVOICE_KEY", required: false },
     { name: "PAGESPEED_API_KEY", required: false },
     { name: "MCP_API_KEY", required: false },
+    { name: "BOT_WRITE_API_KEY", required: false },
   ].map((c) => ({ ...c, present: has(c.name) }));
 }

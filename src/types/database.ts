@@ -101,6 +101,7 @@ export type Database = {
         Row: {
           action: string
           actor_id: string | null
+          actor_name: string | null
           actor_type: string
           after: Json | null
           approval_id: string | null
@@ -115,6 +116,7 @@ export type Database = {
         Insert: {
           action: string
           actor_id?: string | null
+          actor_name?: string | null
           actor_type: string
           after?: Json | null
           approval_id?: string | null
@@ -129,6 +131,7 @@ export type Database = {
         Update: {
           action?: string
           actor_id?: string | null
+          actor_name?: string | null
           actor_type?: string
           after?: Json | null
           approval_id?: string | null
@@ -176,6 +179,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      bot_idempotency_keys: {
+        Row: {
+          bot_name: string
+          created_at: string
+          entity_id: string | null
+          entity_type: string | null
+          id: string
+          idempotency_key: string
+          operation: string
+          payload_hash: string
+          result: Json | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          bot_name: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          idempotency_key: string
+          operation: string
+          payload_hash: string
+          result?: Json | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          bot_name?: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          idempotency_key?: string
+          operation?: string
+          payload_hash?: string
+          result?: Json | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       business_calendar: {
         Row: {
@@ -1434,6 +1479,7 @@ export type Database = {
         Row: {
           billable_flag: boolean
           category: string | null
+          coverage: string | null
           client_id: string
           completed_at: string | null
           counts_toward_quota: boolean
@@ -1453,6 +1499,7 @@ export type Database = {
         Insert: {
           billable_flag?: boolean
           category?: string | null
+          coverage?: string | null
           client_id: string
           completed_at?: string | null
           counts_toward_quota?: boolean
@@ -1472,6 +1519,7 @@ export type Database = {
         Update: {
           billable_flag?: boolean
           category?: string | null
+          coverage?: string | null
           client_id?: string
           completed_at?: string | null
           counts_toward_quota?: boolean

@@ -25,7 +25,11 @@ export const PERMISSIONS = [
   "billing.invoice_send",
   /** Archive, hold, stop monitoring, edit details and websites. */
   "clients.write",
-  /** Add and edit leads, change their stage. */
+  /** Add and edit leads, change their stage. Does not include deleting a lead. */
+  "leads.write",
+  /** Add and edit client notes. */
+  "notes.write",
+  /** Add and edit leads, change their stage, and delete a lead. */
   "growth.write",
   /** "Sync from Stripe": record customers and payments the webhook missed. */
   "billing.sync",
@@ -51,6 +55,9 @@ const GRANTS: Record<ActorType, readonly Permission[]> = {
   // Read only. The ai actor reaches services only through the fixed tool list in domains/assistant,
   // and every tool returns an explicit set of fields (no contact details, notes or ids from other systems).
   ai: ["assistant.read", "clients.read", "work.read", "growth.read", "monitoring.read", "calendar.read"],
+  // The bot write API. Leads (not delete), client notes, change requests, comments and tasks.
+  // No money, legal, settings, users, deletes, or the read-only assistant tools.
+  bot: ["leads.write", "notes.write", "work.write"],
 };
 
 export function can(actor: Actor, permission: Permission): boolean {

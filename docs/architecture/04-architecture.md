@@ -142,6 +142,7 @@ No integration counts as working until it passes the staging acceptance checks (
 - AI tools are thin wrappers over the **same service functions**, running as an `ai` actor on behalf of the owner. There is no raw SQL and no service-role access.
 - **Read tools first:** list and get for clients, projects, tasks, requests and care obligations, the business overview, and incidents. Each answer cites its sources and freshness (SOP8 3.4).
 - **Action tools create approval requests** (preview, target, consequence) that the owner approves in the app (SOP8 3.3). Prices, money, legal matters, permissions and external messages are never executed directly.
+- **Bot writes** ([18-bot-write-api](18-bot-write-api.md)) are a separate key and a `bot` actor, not `ai`. The `ai` actor stays read-only. The bot may create and update leads, client notes, change requests, request comments and tasks. Money, legal matters, permissions, external messages and deletes stay closed. Jacob reviews the daily batch before the bot submits it.
 - Client files, emails and website content are treated as untrusted data, never as instructions.
 - The redaction pattern of the existing MCP server is reused.
 
