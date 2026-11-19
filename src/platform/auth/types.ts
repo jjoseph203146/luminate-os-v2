@@ -12,6 +12,8 @@ export type Actor =
   /**
    * A named assistant bot calling POST /api/bot/writes. It never has a session.
    * `name` is the X-Bot-Name header (which bot), stored on the audit row.
+   * The name is not a credential. Every bot shares one BOT_WRITE_API_KEY, and the
+   * caller declares the name. Anyone who has the key can send any allowed name.
    */
   | { type: "bot"; name: string; ip: string | null };
 

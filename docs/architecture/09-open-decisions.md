@@ -25,6 +25,7 @@ These are the questions only the owner can answer. Each has a recommendation. Th
 | D10 | **Existing project stages:** for the 11 projects, which are completed and which are in progress? | I'll list them for you to mark |
 | D11 | The `security_findings` table (empty, origin unknown) | Leave it untouched; drop it after the old app is retired if nothing uses it |
 | D12 | The one client login that isn't linked to any client | Remove it, or link it to the right client; I can't tell which from here |
+| D26 | **Won in build step 2** links or creates a client only, and the screen requires both a signed contract and a paid deposit. SOP2 §2 says Won is a signed agreement, the deposit may still be pending, and Won then creates a project, a deposit milestone and onboarding tasks. | Leave SOP2 as written. This step does not change it (doc 19). Confirm whether the deposit-paid gate stays when project creation is built. |
 
 ## Needed before Phase 4 (care)
 

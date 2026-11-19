@@ -60,8 +60,10 @@ Rules:
   follow-up date, source (free text, old suggestion list plus "Website form"), estimated value (0 to $10M, cents).
 - The same lead added again within 2 minutes (name plus email, else phone, else business name) returns the one
   already saved. At most 30 lead changes a minute.
-- Audit rows never carry names, emails, phone numbers or notes.
-- Won does not create a client (same as the old app). Not ported: the old leads page's status and source filters,
+- Audit rows never carry names, emails, phone numbers or notes. Replacing notes keeps the previous text in
+  `lead_activities` (migration 0011) and records only the length on the audit row.
+- Won means the contract is signed and the deposit is paid. It links an existing client or creates one
+  (doc 19). It does not create a project or take a payment. Not ported: the old leads page's status and source filters,
   and a Quick Add menu entry.
 
 ## Sync from Stripe

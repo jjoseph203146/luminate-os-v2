@@ -31,6 +31,8 @@ export const PERMISSIONS = [
   "notes.write",
   /** Add and edit leads, change their stage, and delete a lead. */
   "growth.write",
+  /** Won backfill. Owner, or the named won-backfill system actor. Not the bot. */
+  "growth.backfill",
   /** "Sync from Stripe": record customers and payments the webhook missed. */
   "billing.sync",
   /** The Money page: payments, MRR, overdue and paused (read only). */
@@ -47,7 +49,7 @@ export type Permission = (typeof PERMISSIONS)[number];
 // actors are designed but switched off (docs/architecture/04 s3).
 const GRANTS: Record<ActorType, readonly Permission[]> = {
   owner: PERMISSIONS,
-  system: ["jobs.read", "jobs.run", "growth.intake", "notifications.send", "monitoring.read", "monitoring.scan", "alerts.run", "billing.schedule"],
+  system: ["jobs.read", "jobs.run", "growth.intake", "notifications.send", "monitoring.read", "monitoring.scan", "alerts.run", "billing.schedule", "growth.backfill"],
   contractor: [],
   client: [],
   // The Stripe webhook: records customers, payments and subscription state. Nothing else.

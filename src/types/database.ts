@@ -690,6 +690,51 @@ export type Database = {
           },
         ]
       }
+      client_note_revisions: {
+        Row: {
+          actor_name: string | null
+          actor_type: string | null
+          client_id: string
+          created_at: string
+          id: string
+          note_id: string
+          previous_content: string
+        }
+        Insert: {
+          actor_name?: string | null
+          actor_type?: string | null
+          client_id: string
+          created_at?: string
+          id?: string
+          note_id: string
+          previous_content: string
+        }
+        Update: {
+          actor_name?: string | null
+          actor_type?: string | null
+          client_id?: string
+          created_at?: string
+          id?: string
+          note_id?: string
+          previous_content?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_note_revisions_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_note_revisions_note_id_fkey"
+            columns: ["note_id"]
+            isOneToOne: false
+            referencedRelation: "client_notes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       client_phones: {
         Row: {
           client_id: string
@@ -1043,50 +1088,129 @@ export type Database = {
         }
         Relationships: []
       }
+      lead_activities: {
+        Row: {
+          actor_name: string | null
+          actor_type: string | null
+          body: string | null
+          created_at: string
+          direction: string | null
+          id: string
+          kind: string
+          lead_id: string
+          occurred_at: string
+          summary: string
+        }
+        Insert: {
+          actor_name?: string | null
+          actor_type?: string | null
+          body?: string | null
+          created_at?: string
+          direction?: string | null
+          id?: string
+          kind: string
+          lead_id: string
+          occurred_at?: string
+          summary: string
+        }
+        Update: {
+          actor_name?: string | null
+          actor_type?: string | null
+          body?: string | null
+          created_at?: string
+          direction?: string | null
+          id?: string
+          kind?: string
+          lead_id?: string
+          occurred_at?: string
+          summary?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_activities_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leads: {
         Row: {
           business_name: string
+          campaign: string | null
+          client_id: string | null
           created_at: string
           email: string | null
           estimated_value: number | null
           follow_up_date: string | null
           id: string
+          kind: string | null
+          last_touch_at: string | null
+          lost_reason: string | null
           name: string
+          next_step: string | null
+          next_step_on: string | null
           notes: string | null
           phone: string | null
           source: string | null
+          stage_changed_at: string | null
           status: string
           updated_at: string
         }
         Insert: {
           business_name: string
+          campaign?: string | null
+          client_id?: string | null
           created_at?: string
           email?: string | null
           estimated_value?: number | null
           follow_up_date?: string | null
           id?: string
+          kind?: string | null
+          last_touch_at?: string | null
+          lost_reason?: string | null
           name: string
+          next_step?: string | null
+          next_step_on?: string | null
           notes?: string | null
           phone?: string | null
           source?: string | null
+          stage_changed_at?: string | null
           status?: string
           updated_at?: string
         }
         Update: {
           business_name?: string
+          campaign?: string | null
+          client_id?: string | null
           created_at?: string
           email?: string | null
           estimated_value?: number | null
           follow_up_date?: string | null
           id?: string
+          kind?: string | null
+          last_touch_at?: string | null
+          lost_reason?: string | null
           name?: string
+          next_step?: string | null
+          next_step_on?: string | null
           notes?: string | null
           phone?: string | null
           source?: string | null
+          stage_changed_at?: string | null
           status?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "leads_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       notes: {
         Row: {

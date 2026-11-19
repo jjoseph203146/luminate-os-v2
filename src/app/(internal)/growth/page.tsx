@@ -2,7 +2,8 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { requireOwner } from "@/platform/auth/actor";
 import { getGrowthOverview } from "@/domains/growth/service";
-import { followUpNote, followUpShort, followUpState, isOpen, LEAD_SOURCES, sortOpen, STAGE_LABEL } from "@/domains/growth/rules";
+import { followUpNote, followUpShort, followUpState, isOpen, KIND_LABEL, LEAD_SOURCES, LOST_REASON_LABEL, sortOpen, STAGE_LABEL } from "@/domains/growth/rules";
+import { LEAD_KINDS, LOST_REASONS } from "@/domains/growth/types";
 import { NOT_GIVEN } from "@/domains/growth/intake";
 import { STAGES, type Lead, type Stage } from "@/domains/growth/types";
 import { phoneHref } from "@/domains/clients/rules";
@@ -107,6 +108,35 @@ function LeadFields({ lead }: { lead?: Lead }) {
       <Stack label="Follow-up date (optional)">
         <input name="followUpDate" type="date" defaultValue={lead?.followUpDate ?? ""} className={INPUT} />
       </Stack>
+      <Stack label="Next step (optional)">
+        <input name="nextStep" maxLength={200} defaultValue={lead?.nextStep ?? ""} placeholder="Send the proposal" className={INPUT} />
+      </Stack>
+      <Stack label="Next step date (optional)">
+        <input name="nextStepOn" type="date" defaultValue={lead?.nextStepOn ?? ""} className={INPUT} />
+      </Stack>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Stack label="Kind (optional)">
+          <select name="kind" defaultValue={lead?.kind ?? ""} className={INPUT}>
+            <option value="">Not set</option>
+            {LEAD_KINDS.map((k) => (
+              <option key={k} value={k}>{KIND_LABEL[k]}</option>
+            ))}
+          </select>
+        </Stack>
+        <Stack label="Campaign (optional)">
+          <input name="campaign" maxLength={80} defaultValue={lead?.campaign ?? ""} className={INPUT} />
+        </Stack>
+      </div>
+      {lead && (
+        <Stack label="Lost reason (optional until the lead is lost)">
+          <select name="lostReason" defaultValue={lead.lostReason ?? ""} className={INPUT}>
+            <option value="">Not set</option>
+            {LOST_REASONS.map((r) => (
+              <option key={r} value={r}>{LOST_REASON_LABEL[r]}</option>
+            ))}
+          </select>
+        </Stack>
+      )}
       <Stack label="Notes (optional)">
         <textarea name="notes" rows={3} maxLength={5000} defaultValue={lead?.notes ?? ""} className={TEXTAREA} />
       </Stack>
@@ -226,6 +256,12 @@ export default async function GrowthPage({ searchParams }: { searchParams: Searc
             <Kv label="Follow-up">{followUpNote(selected, today)}</Kv>
             <Kv label="Follow-up date">{dayLabel(selected.followUpDate)}</Kv>
             <Kv label="Came in by">{selected.source ?? "Not recorded"}</Kv>
+            <Kv label="Kind">{selected.kind ? KIND_LABEL[selected.kind] : "Not recorded"}</Kv>
+            <Kv label="Campaign">{selected.campaign ?? "Not recorded"}</Kv>
+            <Kv label="Next step">{selected.nextStep ?? "Not set"}</Kv>
+            <Kv label="Next step date">{dayLabel(selected.nextStepOn ?? null)}</Kv>
+            <Kv label="Last touch">{selected.lastTouchAt ? dayLabel(selected.lastTouchAt.slice(0, 10)) : "Not recorded"}</Kv>
+            <Kv label="Client">{selected.clientId ? <Link href={`/clients/${selected.clientId}`}>Open client</Link> : "Not linked"}</Kv>
             <Kv label="Added">{dayLabel(selected.createdAt.slice(0, 10))}</Kv>
           </KvCard>
           {selected.notes && (
@@ -237,13 +273,42 @@ export default async function GrowthPage({ searchParams }: { searchParams: Searc
 
           <PanelLabel>Stage</PanelLabel>
           <div className="flex flex-wrap gap-2">
-            {STAGES.filter((st) => st !== selected.stage).map((st) => (
+            {STAGES.filter((st) => st !== selected.stage && st !== "won" && st !== "lost").map((st) => (
               <ActionForm key={st} action={setLeadStageAction} submitLabel={STAGE_LABEL[st]} className="contents" buttonClassName={BTN_SMALL}>
                 <input type="hidden" name="id" value={selected.id} />
                 <input type="hidden" name="stage" value={st} />
               </ActionForm>
             ))}
           </div>
+          {selected.stage !== "lost" && (
+            <ActionForm action={setLeadStageAction} submitLabel="Lost" className="flex flex-col gap-2" buttonClassName={BTN_SMALL} note="A lost lead keeps its record. Pick why.">
+              <input type="hidden" name="id" value={selected.id} />
+              <input type="hidden" name="stage" value="lost" />
+              <select name="lostReason" required defaultValue={selected.lostReason ?? ""} aria-label="Lost reason" className={INPUT}>
+                <option value="">Reason</option>
+                {LOST_REASONS.map((r) => (
+                  <option key={r} value={r}>{LOST_REASON_LABEL[r]}</option>
+                ))}
+              </select>
+            </ActionForm>
+          )}
+          {(selected.stage !== "won" || !selected.clientId) && (
+            <ActionForm action={setLeadStageAction} submitLabel="Won" className="flex flex-col gap-2" buttonClassName={BTN_SMALL} note="Won means the contract is signed and the deposit is paid. The lead is linked to a client, or a client is created. No invoice is sent.">
+              <input type="hidden" name="id" value={selected.id} />
+              <input type="hidden" name="stage" value="won" />
+              <label className="flex items-center gap-2 text-[14px]">
+                <input type="checkbox" name="contractSigned" value="yes" required className="h-5 w-5" />
+                Contract is signed
+              </label>
+              <label className="flex items-center gap-2 text-[14px]">
+                <input type="checkbox" name="depositPaid" value="yes" required className="h-5 w-5" />
+                Deposit is paid
+              </label>
+              <Stack label="Existing client id (optional)">
+                <input name="clientId" defaultValue={selected.clientId ?? ""} placeholder="Leave blank to match or create" className={MONO_INPUT} />
+              </Stack>
+            </ActionForm>
+          )}
 
           <PanelLabel>Follow-up date</PanelLabel>
           <ActionForm key={`fu-${selected.id}-${selected.followUpDate ?? ""}`} action={setLeadFollowUpAction} submitLabel="Save date" className="flex flex-col gap-2" buttonClassName={BTN_SMALL} note="Clear the date and save to remove it.">
@@ -280,7 +345,7 @@ export default async function GrowthPage({ searchParams }: { searchParams: Searc
             <LeadFields />
           </ActionForm>
           <p className="m-0 text-[12px] leading-[1.45] text-dim">
-            New leads start at New lead. A won lead does not become a client by itself; clients come from Stripe.
+            New leads start at New lead. Marking a lead Won means the contract is signed and the deposit is paid. The app then links an existing client or creates one. It does not create a project or take a payment.
           </p>
         </Panel>
       )}

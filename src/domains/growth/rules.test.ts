@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changedLeadFields, dueNow, followUpNote, followUpShort, followUpState, leadSavedMessage, sortOpen, STAGE_TO_STATUS, stageMessage, stageOf, STATUS_TO_STAGE, statusOf, summarize, type LeadFields } from "./rules";
+import { assertBackfillEnvironment, changedLeadFields, clientFromLead, decideClientLink, dueNow, followUpNote, followUpShort, followUpState, isPayingClient, leadSavedMessage, planWonBackfill, sortOpen, STAGE_TO_STATUS, stageMessage, stageOf, STATUS_TO_STAGE, statusOf, summarize, type BackfillClient, type BackfillLead, type LeadFields, type WonBackfillPlan } from "./rules";
 import { LEAD_STATUSES, STAGES } from "./types";
 import type { Lead } from "./types";
 
@@ -108,10 +108,11 @@ describe("statusOf", () => {
 });
 
 describe("changedLeadFields", () => {
-  const base: LeadFields = { name: "A", businessName: "B", email: "a@b.co", phone: null, notes: null, followUpDate: null, source: null, value: 100 };
+  const base: LeadFields = { name: "A", businessName: "B", email: "a@b.co", phone: null, notes: null, followUpDate: null, source: null, value: 100, nextStep: null, nextStepOn: null, lostReason: null, kind: null, campaign: null };
   it("lists only the names of changed fields", () => {
     expect(changedLeadFields(base, { ...base })).toEqual([]);
     expect(changedLeadFields(base, { ...base, email: "c@d.co", value: 200, followUpDate: "2026-12-01" })).toEqual(["email", "followUpDate", "value"]);
+    expect(changedLeadFields(base, { ...base, nextStep: "Call", kind: "inbound" })).toEqual(["nextStep", "kind"]);
   });
   it("treats a missing value and null alike", () => {
     expect(changedLeadFields({ ...base, notes: undefined as unknown as null }, base)).toEqual([]);
@@ -121,10 +122,134 @@ describe("changedLeadFields", () => {
 describe("messages", () => {
   it("words a stage change", () => {
     expect(stageMessage({ stage: "won", changed: true })).toBe("Moved to Won.");
+    expect(stageMessage({ stage: "won", changed: true, client: "created" })).toBe("Moved to Won and created a client.");
+    expect(stageMessage({ stage: "won", changed: true, client: "linked" })).toBe("Moved to Won and linked the client.");
     expect(stageMessage({ stage: "won", changed: false })).toBe("Already in Won.");
   });
   it("words an edit", () => {
     expect(leadSavedMessage([])).toBe("Nothing changed.");
     expect(leadSavedMessage(["email"])).toBe("Lead saved.");
+  });
+});
+
+const cid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+const client = (n: number, over: Partial<BackfillClient> = {}): BackfillClient => ({
+  id: cid(n),
+  businessName: `Client ${n}`,
+  email: `c${n}@example.com`,
+  contactName: `Person ${n}`,
+  archived: false,
+  paying: true,
+  ...over,
+});
+const leadRow = (n: number, over: Partial<BackfillLead> = {}): BackfillLead => ({
+  id: cid(100 + n),
+  name: `Lead ${n}`,
+  businessName: `Lead Co ${n}`,
+  email: null,
+  phone: null,
+  stage: "new_lead",
+  clientId: null,
+  ...over,
+});
+
+describe("decideClientLink", () => {
+  const clients = [client(1), client(2, { businessName: "Shared", email: "other@example.com" }), client(3, { archived: true, email: "gone@example.com", businessName: "Gone Co" })];
+  it("keeps a client the lead already has", () => {
+    expect(decideClientLink({ clientId: cid(1), email: "nope@example.com", businessName: "Other" }, clients)).toEqual({ action: "keep", clientId: cid(1) });
+  });
+  it("matches one email, and does not use a placeholder or an archived client", () => {
+    expect(decideClientLink({ clientId: null, email: "C1@Example.com", businessName: "Nope" }, clients)).toEqual({ action: "link", clientId: cid(1), how: "email" });
+    expect(decideClientLink({ clientId: null, email: "no-email", businessName: "Not given" }, clients).action).toBe("create");
+    expect(decideClientLink({ clientId: null, email: "gone@example.com", businessName: "Gone Co" }, clients).action).toBe("create");
+  });
+  it("matches the business name when the email does not, and refuses two matches", () => {
+    expect(decideClientLink({ clientId: null, email: null, businessName: "Shared" }, clients)).toEqual({ action: "link", clientId: cid(2), how: "business_name" });
+    const ambiguous = decideClientLink({ clientId: null, email: null, businessName: "Client 1" }, [client(1), client(4, { businessName: "Client 1", email: "c4@example.com" })]);
+    expect(ambiguous.action).toBe("ambiguous");
+  });
+});
+
+describe("clientFromLead", () => {
+  it("uses the old placeholders and marks the client active", () => {
+    expect(clientFromLead({ name: "Ada", businessName: "Not given", email: null, phone: null })).toEqual({
+      business_name: "Unnamed",
+      contact_name: "Ada",
+      email: "no-email",
+      phone: null,
+      status: "active",
+    });
+  });
+});
+
+describe("isPayingClient", () => {
+  it("counts a positive lifetime value or a paid revenue row, and skips archived clients", () => {
+    expect(isPayingClient({ archived: false, lifetimeValue: 35, paidRevenue: false })).toBe(true);
+    expect(isPayingClient({ archived: false, lifetimeValue: 0, paidRevenue: true })).toBe(true);
+    expect(isPayingClient({ archived: false, lifetimeValue: 0, paidRevenue: false })).toBe(false);
+    expect(isPayingClient({ archived: true, lifetimeValue: 100, paidRevenue: true })).toBe(false);
+  });
+});
+
+describe("assertBackfillEnvironment", () => {
+  it("allows local and staging only", () => {
+    expect(assertBackfillEnvironment("local")).toBe("local");
+    expect(assertBackfillEnvironment("staging")).toBe("staging");
+    expect(() => assertBackfillEnvironment("production")).toThrow(/production/);
+    expect(() => assertBackfillEnvironment(undefined)).toThrow(/production/);
+  });
+});
+
+describe("planWonBackfill", () => {
+  const clients = Array.from({ length: 12 }, (_, i) => client(i + 1));
+  const leads: BackfillLead[] = [
+    leadRow(1, { email: "c1@example.com", businessName: "Client 1" }),
+    leadRow(2, { businessName: "Client 2" }),
+    leadRow(3, { stage: "won", clientId: cid(3) }),
+    leadRow(4, { stage: "in_discussion", clientId: cid(4) }),
+    leadRow(5, { email: "c5@example.com" }),
+    leadRow(6, { email: "c5@example.com" }),
+    leadRow(7, { stage: "won", businessName: "Brand New", email: "new@example.com" }),
+  ];
+
+  function apply(plan: WonBackfillPlan, rows: BackfillLead[], people: BackfillClient[]): { leads: BackfillLead[]; clients: BackfillClient[] } {
+    const nextLeads = rows.map((l) => ({ ...l }));
+    const nextClients = people.map((c) => ({ ...c }));
+    let created = 0;
+    for (const action of plan.actions) {
+      if (action.op !== "link" && action.op !== "mark_won" && action.op !== "create_client") continue;
+      const row = nextLeads.find((l) => l.id === action.leadId);
+      if (!row) continue;
+      if (action.op === "create_client") {
+        created += 1;
+        const id = cid(50 + created);
+        nextClients.push({ id, businessName: row.businessName, email: row.email ?? "no-email", contactName: row.name, archived: false, paying: false });
+        row.clientId = id;
+        row.stage = "won";
+        continue;
+      }
+      row.clientId = action.clientId;
+      if (action.op === "mark_won" || action.markWon) row.stage = "won";
+    }
+    return { leads: nextLeads, clients: nextClients };
+  }
+
+  it("covers 12 paying clients and only writes a link, a won mark, or one new client", () => {
+    const plan = planWonBackfill(leads, clients);
+    expect(plan.payingCount).toBe(12);
+    expect(plan.actions.filter((a) => a.op === "link").map((a) => a.op)).toHaveLength(2);
+    expect(plan.actions.some((a) => a.op === "mark_won" && a.clientId === cid(4))).toBe(true);
+    expect(plan.actions.some((a) => a.op === "already" && a.clientId === cid(3))).toBe(true);
+    expect(plan.actions.some((a) => a.op === "ambiguous" && a.clientId === cid(5))).toBe(true);
+    expect(plan.actions.filter((a) => a.op === "create_client")).toHaveLength(1);
+    expect(plan.actions.filter((a) => a.op === "unmatched_client")).toHaveLength(7);
+  });
+
+  it("is idempotent: applying the plan leaves nothing further to write", () => {
+    const first = planWonBackfill(leads, clients);
+    const applied = apply(first, leads, clients);
+    const second = planWonBackfill(applied.leads, applied.clients);
+    expect(second.actions.some((a) => a.op === "link" || a.op === "mark_won" || a.op === "create_client")).toBe(false);
+    expect(second.payingCount).toBe(12);
   });
 });

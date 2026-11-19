@@ -1,6 +1,6 @@
 // Pure rules for the Growth screen. No database, easy to test.
-import { WEBSITE_SOURCE } from "./intake";
-import { STAGES, type GrowthSummary, type Lead, type LeadStatus, type Stage } from "./types";
+import { NOT_GIVEN, WEBSITE_SOURCE } from "./intake";
+import { LOST_REASONS, STAGES, type GrowthSummary, type Lead, type LeadKind, type LeadStatus, type LostReason, type Stage } from "./types";
 
 /** The old app's lead status mapped to the new stages (open decision D4). */
 export const STATUS_TO_STAGE: Record<string, Stage> = {
@@ -17,6 +17,20 @@ export const STAGE_LABEL: Record<Stage, string> = {
   proposal_sent: "Proposal sent",
   won: "Won",
   lost: "Lost",
+};
+
+export const LOST_REASON_LABEL: Record<LostReason, string> = {
+  price: "Price",
+  timing: "Timing",
+  competitor: "Competitor",
+  unresponsive: "Unresponsive",
+  not_fit: "Not a fit",
+  other: "Other",
+};
+
+export const KIND_LABEL: Record<LeadKind, string> = {
+  inbound: "Inbound",
+  outbound: "Outbound",
 };
 
 /** An unknown status is shown as a new lead rather than hidden. */
@@ -43,7 +57,7 @@ export function statusOf(stage: Stage): LeadStatus {
 /** The old app's suggested sources. Source is free text in the database, so any other value still saves. */
 export const LEAD_SOURCES = ["Referral", "Website", WEBSITE_SOURCE, "Social Media", "Cold Outreach", "Networking", "Existing Client", "Other"] as const;
 
-/** The editable fields of a lead, as saved. */
+/** The editable fields of a lead, as saved. lastTouchAt and clientId are not here: a full edit must not clear them. */
 export interface LeadFields {
   name: string;
   businessName: string;
@@ -53,17 +67,32 @@ export interface LeadFields {
   followUpDate: string | null;
   source: string | null;
   value: number | null;
+  nextStep: string | null;
+  nextStepOn: string | null;
+  lostReason: LostReason | null;
+  kind: LeadKind | null;
+  campaign: string | null;
 }
 
-export const LEAD_FIELDS = ["name", "businessName", "email", "phone", "notes", "followUpDate", "source", "value"] as const satisfies readonly (keyof LeadFields)[];
+export const LEAD_FIELDS = ["name", "businessName", "email", "phone", "notes", "followUpDate", "source", "value", "nextStep", "nextStepOn", "lostReason", "kind", "campaign"] as const satisfies readonly (keyof LeadFields)[];
+
+/** Columns added by migration 0011. A full edit writes these only when one of them changed. */
+export const PIPELINE_FIELDS = ["nextStep", "nextStepOn", "lostReason", "kind", "campaign"] as const satisfies readonly (keyof LeadFields)[];
+
+export function isPipelineField(field: keyof LeadFields): boolean {
+  return (PIPELINE_FIELDS as readonly string[]).includes(field);
+}
 
 /** The NAMES of the fields an edit changes (the audit log records names, never contact details). */
 export function changedLeadFields(before: LeadFields, after: LeadFields): (keyof LeadFields)[] {
   return LEAD_FIELDS.filter((k) => (before[k] ?? null) !== (after[k] ?? null));
 }
 
-/** The message after a stage change. */
-export function stageMessage(r: { stage: Stage; changed: boolean }): string {
+/** The message after a stage change. `client` is set when Won linked or created one. */
+export function stageMessage(r: { stage: Stage; changed: boolean; client?: "linked" | "created" | "kept" | null }): string {
+  if (r.stage === "won" && r.client === "created") return r.changed ? "Moved to Won and created a client." : "Created a client and linked it. The lead was already Won.";
+  if (r.stage === "won" && r.client === "linked") return r.changed ? "Moved to Won and linked the client." : "Linked the client. The lead was already Won.";
+  if (r.stage === "won" && r.client === "kept") return "Already in Won.";
   return r.changed ? `Moved to ${STAGE_LABEL[r.stage]}.` : `Already in ${STAGE_LABEL[r.stage]}.`;
 }
 
@@ -142,4 +171,222 @@ export function sortOpen(leads: Lead[]): Lead[] {
   return leads
     .filter(isOpen)
     .sort((a, b) => (a.followUpDate ?? "9999-12-31").localeCompare(b.followUpDate ?? "9999-12-31") || b.createdAt.localeCompare(a.createdAt));
+}
+
+// --- Won: link an existing client, or create one --------------------------------
+
+const PLACEHOLDER_EMAILS = new Set(["no-email"]);
+const PLACEHOLDER_BUSINESSES = new Set([NOT_GIVEN.toLowerCase(), "unnamed"]);
+
+/** Email we are willing to match on. Placeholders and blanks do not match. */
+export function normEmail(email: string | null | undefined): string | null {
+  if (!email) return null;
+  const v = email.trim().toLowerCase();
+  if (!v || PLACEHOLDER_EMAILS.has(v)) return null;
+  return v;
+}
+
+/** Business name we are willing to match on. Placeholders do not match. */
+export function normBusiness(name: string | null | undefined): string | null {
+  if (!name) return null;
+  const v = name.trim().toLowerCase();
+  if (!v || PLACEHOLDER_BUSINESSES.has(v)) return null;
+  return v;
+}
+
+export function isLostReason(value: string | null | undefined): value is LostReason {
+  return !!value && (LOST_REASONS as readonly string[]).includes(value);
+}
+
+export interface ClientCandidate {
+  id: string;
+  businessName: string;
+  email: string;
+  contactName: string;
+  archived: boolean;
+}
+
+export type ClientLinkDecision =
+  | { action: "keep"; clientId: string }
+  | { action: "link"; clientId: string; how: "email" | "business_name" }
+  | { action: "create" }
+  | { action: "ambiguous"; clientIds: string[]; how: "email" | "business_name" };
+
+function activeClients(clients: readonly ClientCandidate[]): ClientCandidate[] {
+  return clients.filter((c) => !c.archived);
+}
+
+/**
+ * Which client a Won lead should use.
+ * Email wins over business name. Several matches are ambiguous: the caller must pass a client id.
+ * Archived clients are not matched. A lead that already has a client keeps it.
+ */
+export function decideClientLink(
+  lead: { clientId?: string | null; email: string | null; businessName: string },
+  clients: readonly ClientCandidate[],
+): ClientLinkDecision {
+  if (lead.clientId && clients.some((c) => c.id === lead.clientId)) return { action: "keep", clientId: lead.clientId };
+  const pool = activeClients(clients);
+  const email = normEmail(lead.email);
+  if (email) {
+    const hits = pool.filter((c) => normEmail(c.email) === email);
+    if (hits.length === 1) return { action: "link", clientId: hits[0]!.id, how: "email" };
+    if (hits.length > 1) return { action: "ambiguous", clientIds: hits.map((c) => c.id).sort(), how: "email" };
+  }
+  const business = normBusiness(lead.businessName);
+  if (business) {
+    const hits = pool.filter((c) => normBusiness(c.businessName) === business);
+    if (hits.length === 1) return { action: "link", clientId: hits[0]!.id, how: "business_name" };
+    if (hits.length > 1) return { action: "ambiguous", clientIds: hits.map((c) => c.id).sort(), how: "business_name" };
+  }
+  return { action: "create" };
+}
+
+/** A client row created from a Won lead. Active, because the contract is signed and the deposit is paid. No Stripe id. */
+export function clientFromLead(lead: { name: string; businessName: string; email: string | null; phone: string | null }): {
+  business_name: string;
+  contact_name: string;
+  email: string;
+  phone: string | null;
+  status: "active";
+} {
+  const business = normBusiness(lead.businessName);
+  const email = normEmail(lead.email);
+  return {
+    business_name: business ? lead.businessName.trim() : "Unnamed",
+    contact_name: lead.name.trim() || "Unknown",
+    email: email ?? "no-email",
+    phone: lead.phone,
+    status: "active",
+  };
+}
+
+/** A non-archived client who has already paid (lifetime value or a paid revenue row). */
+export function isPayingClient(client: { archived: boolean; lifetimeValue: number; paidRevenue: boolean }): boolean {
+  return !client.archived && (client.lifetimeValue > 0 || client.paidRevenue);
+}
+
+/**
+ * The Won backfill runs only against a named local or staging environment.
+ * Unset and production both refuse. This does not prove the database URL is staging.
+ */
+export function assertBackfillEnvironment(appEnv: string | undefined): "local" | "staging" {
+  if (appEnv === "local" || appEnv === "staging") return appEnv;
+  throw new Error("The Won backfill runs only when APP_ENV is local or staging. It does not run against production.");
+}
+
+export interface BackfillClient extends ClientCandidate {
+  paying: boolean;
+}
+
+export interface BackfillLead {
+  id: string;
+  name: string;
+  businessName: string;
+  email: string | null;
+  phone: string | null;
+  stage: Stage;
+  clientId: string | null;
+}
+
+export type WonBackfillAction =
+  | { op: "already"; leadId: string; clientId: string }
+  | { op: "mark_won"; leadId: string; clientId: string }
+  | { op: "link"; leadId: string; clientId: string; how: "email" | "business_name"; markWon: boolean }
+  | { op: "create_client"; leadId: string }
+  | { op: "ambiguous"; clientId: string; leadIds: string[]; how: "email" | "business_name" }
+  | { op: "ambiguous_lead"; leadId: string; clientIds: string[]; how: "email" | "business_name" }
+  | { op: "unmatched_client"; clientId: string };
+
+export interface WonBackfillPlan {
+  /** Paying, non-archived clients. The 2026-11-04 snapshot described 12 of these. */
+  payingCount: number;
+  actions: WonBackfillAction[];
+}
+
+function byId<T extends { id: string }>(rows: readonly T[]): T[] {
+  return [...rows].sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function matchUnlinked(
+  client: ClientCandidate,
+  leads: readonly BackfillLead[],
+  taken: ReadonlySet<string>,
+): { how: "email" | "business_name"; leadIds: string[] } | null {
+  const email = normEmail(client.email);
+  const open = leads.filter((l) => !l.clientId && !taken.has(l.id));
+  if (email) {
+    const hits = open.filter((l) => normEmail(l.email) === email);
+    if (hits.length > 0) return { how: "email", leadIds: hits.map((l) => l.id).sort() };
+  }
+  const business = normBusiness(client.businessName);
+  if (business) {
+    const hits = open.filter((l) => normBusiness(l.businessName) === business);
+    if (hits.length > 0) return { how: "business_name", leadIds: hits.map((l) => l.id).sort() };
+  }
+  return null;
+}
+
+/**
+ * Plan for the Won backfill. Pure: the same inputs always produce the same actions, and applying
+ * the plan (linking those leads, marking them won, creating a client only for an unlinked Won lead)
+ * makes a second plan a no-op aside from rows that were already ambiguous or unmatched.
+ *
+ * A paying client with a linked lead that is not yet Won is marked Won.
+ * A paying client with no linked lead is matched to one unlinked lead by email, then by business name.
+ * An already-Won lead with no client is linked, or a client is created when nothing matches.
+ * Paying clients with no lead are reported. This plan does not invent a lead.
+ */
+export function planWonBackfill(leads: readonly BackfillLead[], clients: readonly BackfillClient[]): WonBackfillPlan {
+  const paying = byId(clients.filter((c) => c.paying && !c.archived));
+  const leadById = new Map(leads.map((l) => [l.id, l]));
+  const actions: WonBackfillAction[] = [];
+  const taken = new Set<string>();
+
+  for (const lead of byId(leads)) {
+    if (!lead.clientId) continue;
+    if (lead.stage === "won") {
+      actions.push({ op: "already", leadId: lead.id, clientId: lead.clientId });
+      taken.add(lead.id);
+      continue;
+    }
+    const client = clients.find((c) => c.id === lead.clientId);
+    if (client?.paying && !client.archived) {
+      actions.push({ op: "mark_won", leadId: lead.id, clientId: lead.clientId });
+      taken.add(lead.id);
+    }
+  }
+
+  for (const client of paying) {
+    if (leads.some((l) => l.clientId === client.id)) continue;
+    const match = matchUnlinked(client, leads, taken);
+    if (!match) {
+      actions.push({ op: "unmatched_client", clientId: client.id });
+      continue;
+    }
+    if (match.leadIds.length > 1) {
+      actions.push({ op: "ambiguous", clientId: client.id, leadIds: match.leadIds, how: match.how });
+      for (const id of match.leadIds) taken.add(id);
+      continue;
+    }
+    const leadId = match.leadIds[0]!;
+    const lead = leadById.get(leadId);
+    actions.push({ op: "link", leadId, clientId: client.id, how: match.how, markWon: lead?.stage !== "won" });
+    taken.add(leadId);
+  }
+
+  for (const lead of byId(leads)) {
+    if (lead.stage !== "won" || lead.clientId || taken.has(lead.id)) continue;
+    const decision = decideClientLink(lead, clients);
+    if (decision.action === "link") {
+      actions.push({ op: "link", leadId: lead.id, clientId: decision.clientId, how: decision.how, markWon: false });
+    } else if (decision.action === "ambiguous") {
+      actions.push({ op: "ambiguous_lead", leadId: lead.id, clientIds: decision.clientIds, how: decision.how });
+    } else if (decision.action === "create" || decision.action === "keep") {
+      if (decision.action === "keep") actions.push({ op: "already", leadId: lead.id, clientId: decision.clientId });
+      else actions.push({ op: "create_client", leadId: lead.id });
+    }
+  }
+
+  return { payingCount: paying.length, actions };
 }

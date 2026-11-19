@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "check:policies": "node scripts/check-policies.ts supabase/migrations",
+    "backfill:won": "node --experimental-strip-types --import ./scripts/ts-alias-register.mjs scripts/backfill-won-clients.ts",
     "check": "npm run typecheck && npm run lint && npm run test && npm run check:policies"
   },
   "dependencies": {

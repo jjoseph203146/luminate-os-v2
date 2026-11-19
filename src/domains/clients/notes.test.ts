@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   insertNote: vi.fn(),
   getNote: vi.fn(),
   updateNote: vi.fn(),
+  insertNoteRevision: vi.fn(),
   logActivity: vi.fn(),
 }));
 vi.mock("@/platform/audit/audit", () => ({ writeAudit: mocks.writeAudit }));
@@ -15,6 +16,7 @@ vi.mock("./repo", () => ({
   insertNote: mocks.insertNote,
   getNote: mocks.getNote,
   updateNote: mocks.updateNote,
+  insertNoteRevision: mocks.insertNoteRevision,
   logActivity: mocks.logActivity,
 }));
 
@@ -33,6 +35,7 @@ beforeEach(() => {
   mocks.insertNote.mockResolvedValue({ id: NOTE });
   mocks.getNote.mockResolvedValue({ id: NOTE, client_id: CLIENT, content: "Old note" });
   mocks.updateNote.mockResolvedValue(true);
+  mocks.insertNoteRevision.mockResolvedValue({ id: "33333333-3333-4333-8333-333333333333" });
   mocks.writeAudit.mockResolvedValue(undefined);
 });
 
@@ -53,13 +56,22 @@ describe("client notes", () => {
     expect(JSON.stringify(mocks.writeAudit.mock.calls)).not.toContain("555");
   });
 
-  it("updates the text, and does nothing when it is unchanged", async () => {
+  it("keeps the previous text, then updates, and does nothing when it is unchanged", async () => {
     expect(await updateClientNote(bot, { id: NOTE, content: "A new note" })).toEqual({ id: NOTE, changed: true });
+    expect(mocks.insertNoteRevision).toHaveBeenCalledWith({ who: "admin" }, { noteId: NOTE, clientId: CLIENT, previousContent: "Old note", actorType: "bot", actorName: "daily-crm" });
     expect(mocks.updateNote).toHaveBeenCalledWith({ who: "admin" }, NOTE, "A new note");
-    expect(mocks.writeAudit).toHaveBeenCalledWith(bot, expect.objectContaining({ action: "client_note.updated", after: { length: "A new note".length, bot: "daily-crm" } }));
+    expect(mocks.writeAudit).toHaveBeenCalledWith(bot, expect.objectContaining({ action: "client_note.updated", after: { length: "A new note".length, previousLength: "Old note".length, historyId: "33333333-3333-4333-8333-333333333333", bot: "daily-crm" } }));
+    expect(JSON.stringify(mocks.writeAudit.mock.calls)).not.toContain("Old note");
     mocks.writeAudit.mockClear();
     expect(await updateClientNote(bot, { id: NOTE, content: "Old note" })).toEqual({ id: NOTE, changed: false });
     expect(mocks.writeAudit).not.toHaveBeenCalled();
+    expect(mocks.insertNoteRevision).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses to replace a note when the history table is not there yet", async () => {
+    mocks.insertNoteRevision.mockResolvedValue("unavailable");
+    await expect(updateClientNote(bot, { id: NOTE, content: "A new note" })).rejects.toBeInstanceOf(RuleError);
+    expect(mocks.updateNote).not.toHaveBeenCalled();
   });
 
   it("says so when the client or the note is missing", async () => {
