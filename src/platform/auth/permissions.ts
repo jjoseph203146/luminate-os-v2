@@ -37,6 +37,8 @@ export const PERMISSIONS = [
   "billing.sync",
   /** The Money page: payments, MRR, overdue and paused (read only). */
   "money.read",
+  /** Owner weekly review: pipeline, clients and paid revenue. Read only. Not granted to the bot. */
+  "dashboard.read",
   /** SOP billing tasks: billing schedules, renewals, Mark sent / reminder sent, manual payments. */
   "billing.tasks",
   /** The billing job: creates and closes billing tasks. Never sends anything. */
