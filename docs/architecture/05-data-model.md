@@ -51,8 +51,8 @@ erDiagram
 
 | Table | Action | Purpose and key fields |
 |---|---|---|
-| `leads` | Extend | Add: `stage` (new_lead / in_discussion / proposal_sent / won / lost), `kind` (inbound / outbound), `service_interest`, `budget`, `timeline`, `priority` (high / medium / low), `owner_id`, `next_action`, `next_action_on`, `last_engaged_at`, `lost_reason` (price / timing / competitor / unresponsive / not_fit / other), `fit_need … fit_recurring` (0–5 or null), `client_id`, `campaign`. A trigger keeps old `status` and new `stage` in step until the old leads page is retired. |
-| `lead_activities` | New | `lead_id`, kind (email / call / meeting / note / outreach), direction, `occurred_at`, summary. Engagement updates `leads.last_engaged_at`. |
+| `leads` | Extend | Add: `stage` (new_lead / in_discussion / proposal_sent / won / lost), `kind` (inbound / outbound), `service_interest`, `budget`, `timeline`, `priority` (high / medium / low), `owner_id`, `next_action`, `next_action_on`, `last_engaged_at`, `lost_reason` (price / timing / competitor / unresponsive / not_fit / other), `fit_need … fit_recurring` (0–5 or null), `client_id`, `campaign`. A trigger keeps old `status` and new `stage` in step until the old leads page is retired. **Migration 0011** adds a subset only, and does not add a `stage` column: `client_id`, `stage_changed_at`, `last_touch_at` (the `last_engaged_at` idea), `next_step`, `next_step_on` (the `next_action` idea), `lost_reason`, `kind`, `campaign`. `leads.status` stays the v1 check. |
+| `lead_activities` | New | `lead_id`, kind (email / call / meeting / note / outreach), direction, `occurred_at`, summary. Engagement updates `leads.last_engaged_at`. **Migration 0011** adds this table, plus kind `stage`, and a `body` column for the previous notes text. A touch moves `leads.last_touch_at` forward. A stage row does not. |
 | `proposals` | New | `lead_id`, `client_id`, scope, deliverables, `price_snapshot` (jsonb of catalog lines), `estimate_hours`, `estimate_direct_costs`, `discount_reason`, status (draft / sent / accepted / declined / superseded), `sent_at`. No expiry (SOP2 §5). |
 
 ### Agreements, projects and delivery

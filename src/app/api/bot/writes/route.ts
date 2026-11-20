@@ -55,6 +55,8 @@ export async function POST(request: Request): Promise<Response> {
   }
   if (!callLimiter.check(ip, Date.now())) return json({ error: "Too many requests. Try again in a minute." }, 429, { "Retry-After": "60" });
 
+  // X-Bot-Name is self-declared. It is not checked against a per-bot secret.
+  // Every bot shares BOT_WRITE_API_KEY, so a caller who has the key can pick any allowed name.
   const botName = request.headers.get("x-bot-name")?.trim() ?? "";
   if (!isBotName(botName)) {
     return json({ error: "Send X-Bot-Name: a lowercase name such as daily-crm (letters, digits and hyphens, up to 40 characters)." }, 400);

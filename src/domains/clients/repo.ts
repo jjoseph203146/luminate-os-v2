@@ -2,6 +2,7 @@
 // Runs as the signed-in owner, so row-level security applies to reads and writes.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/types/database";
+import { isUndefinedTable } from "@/platform/db/schema-errors";
 import { summarizeMonitor, type MonitorRow } from "./rules";
 import type { ClientListItem, ClientWorkspace } from "./types";
 
@@ -309,6 +310,30 @@ export async function updateNote(db: Db, id: string, content: string): Promise<b
   const res = await db.from("client_notes").update({ content }).eq("id", id).select("id");
   if (res.error) throw new RepoError("Could not save the note");
   return (res.data ?? []).length > 0;
+}
+
+/**
+ * Stores the previous note text before it is replaced. "unavailable" when migration 0011
+ * has not created client_note_revisions. Append-only: there is no update.
+ */
+export async function insertNoteRevision(
+  db: Db,
+  row: { noteId: string; clientId: string; previousContent: string; actorType: string; actorName: string | null },
+): Promise<{ id: string } | "unavailable"> {
+  const res = await db
+    .from("client_note_revisions")
+    .insert({
+      note_id: row.noteId,
+      client_id: row.clientId,
+      previous_content: row.previousContent,
+      actor_type: row.actorType,
+      actor_name: row.actorName,
+    })
+    .select("id")
+    .single();
+  if (res.error && isUndefinedTable(res.error, "client_note_revisions")) return "unavailable";
+  if (res.error || !res.data) throw new RepoError("Could not keep the previous note");
+  return { id: res.data.id };
 }
 
 export async function setProjectProductionUrl(db: Db, clientId: string, projectId: string, url: string | null): Promise<boolean> {

@@ -272,13 +272,22 @@ export async function updateClientNote(actor: Actor, raw: unknown): Promise<{ id
   const before = await repo.getNote(db, input.id);
   if (!before) throw new RuleError("That note could not be found.");
   if (before.content === input.content) return { id: input.id, changed: false };
+  // Keep the previous text first. If this cannot be stored, the note is left unchanged.
+  const history = await repo.insertNoteRevision(db, {
+    noteId: before.id,
+    clientId: before.client_id,
+    previousContent: before.content,
+    actorType: actor.type,
+    actorName: actor.type === "bot" ? actor.name : null,
+  });
+  if (history === "unavailable") throw new RuleError("Apply migration 0011 before replacing a note. The previous text is still there.");
   if (!(await repo.updateNote(db, input.id, input.content))) throw new RuleError("That note could not be found.");
   await writeAudit(actor, {
     action: "client_note.updated",
     entityType: "client_note",
     entityId: input.id,
     clientId: before.client_id,
-    after: stampActor(actor, { length: input.content.length }),
+    after: stampActor(actor, { length: input.content.length, previousLength: before.content.length, historyId: history.id }),
   });
   return { id: input.id, changed: true };
 }

@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { isValidIsoDate } from "@/platform/calendar/business-days";
 import { NOT_GIVEN } from "./intake";
-import { STAGES } from "./types";
+import { LEAD_KINDS, LOST_REASONS, STAGES } from "./types";
 
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;
@@ -51,6 +51,47 @@ const followUpDate = z.preprocess(
   z.string().refine(isValidIsoDate, "Enter the follow-up date as a real date.").nullable(),
 );
 
+const nextStepOn = z.preprocess(
+  (v) => oneLine(str(v)) || null,
+  z.string().refine(isValidIsoDate, "Enter the next-step date as a real date.").nullable(),
+);
+
+const nextStep = optionalLine(200, "Next step");
+const campaign = optionalLine(80, "Campaign");
+
+const lostReason = z.preprocess(
+  (v) => oneLine(str(v)) || null,
+  z.enum(LOST_REASONS, "Pick a lost reason.").nullable(),
+);
+
+const kind = z.preprocess(
+  (v) => oneLine(str(v)) || null,
+  z.enum(LEAD_KINDS, "Kind is inbound or outbound.").nullable(),
+);
+
+/** ISO date-time, or blank for null. Stored as UTC. */
+const lastTouchAt = z.preprocess((v) => {
+  const s = oneLine(str(v));
+  if (!s) return null;
+  const at = Date.parse(s);
+  return Number.isNaN(at) ? s : new Date(at).toISOString();
+}, z.string().refine((s) => !Number.isNaN(Date.parse(s)), "Enter the last touch as a date and time.").nullable());
+
+/** A ticked checkbox, JSON true, or "yes". Anything else, including a missing field, is false. */
+const ticked = z.preprocess((v) => {
+  if (v === true || v === 1) return true;
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    return s === "yes" || s === "on" || s === "true" || s === "1";
+  }
+  return false;
+}, z.boolean());
+
+const optionalClientId = z.preprocess(
+  (v) => oneLine(str(v)) || null,
+  z.uuid("That client was not recognised.").nullable(),
+);
+
 const id = z.preprocess((v) => str(v).trim(), z.uuid("That lead was not recognised."));
 
 const fields = {
@@ -65,6 +106,11 @@ const fields = {
   followUpDate,
   source: optionalLine(80, "Source"),
   value: dealValue,
+  nextStep,
+  nextStepOn,
+  lostReason,
+  kind,
+  campaign,
 };
 
 export const createLeadSchema = z.object(fields);
@@ -74,6 +120,8 @@ export const updateLeadSchema = z.object({ id, ...fields });
 export type UpdateLeadInput = z.infer<typeof updateLeadSchema>;
 
 /** A partial edit. Omitted fields are left as they are. Used by the bot write API. */
+const PATCH_FIELD_NAMES = ["name", "businessName", "email", "phone", "notes", "followUpDate", "source", "value", "stage", "nextStep", "nextStepOn", "lostReason", "lastTouchAt", "kind", "campaign"] as const;
+
 export const patchLeadSchema = z
   .object({
     id,
@@ -86,16 +134,47 @@ export const patchLeadSchema = z
     source: fields.source.optional(),
     value: fields.value.optional(),
     stage: z.enum(STAGES).optional(),
+    nextStep: fields.nextStep.optional(),
+    nextStepOn: fields.nextStepOn.optional(),
+    lostReason: fields.lostReason.optional(),
+    lastTouchAt: lastTouchAt.optional(),
+    kind: fields.kind.optional(),
+    campaign: fields.campaign.optional(),
+    contractSigned: ticked.optional(),
+    depositPaid: ticked.optional(),
+    clientId: optionalClientId.optional(),
   })
-  .refine((v) => v.stage !== undefined || v.name !== undefined || v.businessName !== undefined || v.email !== undefined || v.phone !== undefined || v.notes !== undefined || v.followUpDate !== undefined || v.source !== undefined || v.value !== undefined, {
-    message: "Send at least one field to change.",
+  .refine((v) => PATCH_FIELD_NAMES.some((k) => v[k] !== undefined), { message: "Send at least one field to change." })
+  .superRefine((v, ctx) => {
+    if (v.stage === "won" && (!v.contractSigned || !v.depositPaid)) {
+      ctx.addIssue({ code: "custom", message: "Won means the contract is signed and the deposit is paid. Send both as true." });
+    }
+    if (v.stage !== "won" && v.clientId) {
+      ctx.addIssue({ code: "custom", message: "A client can only be chosen when the lead is moved to Won." });
+    }
   });
 export type PatchLeadInput = z.infer<typeof patchLeadSchema>;
 
-export const leadStageSchema = z.object({
-  id,
-  stage: z.preprocess((v) => str(v).trim(), z.enum(STAGES, "Pick a stage.")),
-});
+export const leadStageSchema = z
+  .object({
+    id,
+    stage: z.preprocess((v) => str(v).trim(), z.enum(STAGES, "Pick a stage.")),
+    lostReason: lostReason.optional(),
+    contractSigned: ticked.optional(),
+    depositPaid: ticked.optional(),
+    clientId: optionalClientId.optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.stage === "won" && (!v.contractSigned || !v.depositPaid)) {
+      ctx.addIssue({ code: "custom", message: "Won means the contract is signed and the deposit is paid. Tick both." });
+    }
+    if (v.stage === "lost" && !v.lostReason) {
+      ctx.addIssue({ code: "custom", message: "Pick a reason for marking the lead lost." });
+    }
+    if (v.stage !== "won" && v.clientId) {
+      ctx.addIssue({ code: "custom", message: "A client can only be chosen when the lead is Won." });
+    }
+  });
 
 export const leadFollowUpSchema = z.object({ id, followUpDate });
 
