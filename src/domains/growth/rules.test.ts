@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertBackfillEnvironment, assertBackfillWriteAllowed, botTriesToWin, changedLeadFields, clientFromLead, confirmUrlFromArgv, decideClientLink, dueNow, followUpNote, followUpShort, followUpState, isPayingClient, leadSavedMessage, planWonBackfill, projectRefFromSupabaseUrl, sortOpen, STAGE_TO_STATUS, stageMessage, stageOf, STATUS_TO_STAGE, statusOf, summarize, type BackfillClient, type BackfillLead, type LeadFields, type WonBackfillPlan } from "./rules";
+import { assertBackfillEnvironment, assertBackfillPreviewAllowed, assertBackfillWriteAllowed, botTriesToWin, changedLeadFields, clientFromLead, confirmUrlFromArgv, decideClientLink, dueNow, followUpNote, followUpShort, followUpState, isPayingClient, leadSavedMessage, parseBackfillMode, planWonBackfill, projectRefFromSupabaseUrl, sortOpen, STAGE_TO_STATUS, stageMessage, stageOf, STATUS_TO_STAGE, statusOf, summarize, type BackfillClient, type BackfillLead, type LeadFields, type WonBackfillPlan } from "./rules";
 import { LEAD_STATUSES, STAGES } from "./types";
 import type { Lead } from "./types";
 
@@ -235,6 +235,45 @@ describe("assertBackfillWriteAllowed", () => {
     expect(confirmUrlFromArgv(["--confirm-url=https://stagingref.supabase.co"])).toBe("https://stagingref.supabase.co");
     expect(() => confirmUrlFromArgv(["--confirm-url=", "--confirm-url=https://a.supabase.co"])).toThrow(/once/);
     expect(() => confirmUrlFromArgv(["--confirm-url="])).toThrow(/NEXT_PUBLIC_SUPABASE_URL/);
+  });
+});
+
+const PROD_URL = "https://prodref.supabase.co";
+
+describe("assertBackfillPreviewAllowed", () => {
+  it("allows local and staging without the production acknowledgement", () => {
+    expect(assertBackfillPreviewAllowed({ appEnv: "local", acknowledgeProduction: false })).toBe("local");
+    expect(assertBackfillPreviewAllowed({ appEnv: "staging", acknowledgeProduction: false })).toBe("staging");
+  });
+
+  it("allows production only with the acknowledgement and a project ref", () => {
+    expect(assertBackfillPreviewAllowed({ appEnv: "production", acknowledgeProduction: true, supabaseUrl: PROD_URL })).toBe("production");
+    expect(() => assertBackfillPreviewAllowed({ appEnv: "production", acknowledgeProduction: false, supabaseUrl: PROD_URL })).toThrow(/i-know-this-is-production/);
+    expect(() => assertBackfillPreviewAllowed({ appEnv: "production", acknowledgeProduction: true })).toThrow(/NEXT_PUBLIC_SUPABASE_URL/);
+    expect(() => assertBackfillPreviewAllowed({ appEnv: "production", acknowledgeProduction: true, supabaseUrl: "http://127.0.0.1:54321" })).toThrow(/supabase\.co/);
+  });
+
+  it("refuses an unset APP_ENV", () => {
+    expect(() => assertBackfillPreviewAllowed({ appEnv: undefined, acknowledgeProduction: true, supabaseUrl: PROD_URL })).toThrow(/unset APP_ENV/);
+  });
+});
+
+describe("parseBackfillMode", () => {
+  it("defaults to dry-run and reads preview", () => {
+    expect(parseBackfillMode(["node", "script"])).toEqual({ mode: "dry-run", confirmUrl: undefined, acknowledgeProduction: false });
+    expect(parseBackfillMode(["--preview", "--i-know-this-is-production"])).toEqual({ mode: "preview", confirmUrl: undefined, acknowledgeProduction: true });
+    expect(parseBackfillMode(["--apply", "--confirm-url=https://stagingref.supabase.co"])).toEqual({
+      mode: "apply",
+      confirmUrl: "https://stagingref.supabase.co",
+      acknowledgeProduction: false,
+    });
+  });
+
+  it("rejects mixed flags", () => {
+    expect(() => parseBackfillMode(["--preview", "--apply"])).toThrow(/only one of --dry-run, --apply, or --preview/);
+    expect(() => parseBackfillMode(["--preview", "--dry-run"])).toThrow(/only one of --dry-run, --apply, or --preview/);
+    expect(() => parseBackfillMode(["--preview", "--apply", "--dry-run"])).toThrow(/only one of --dry-run, --apply, or --preview/);
+    expect(() => parseBackfillMode(["--dry-run", "--apply"])).toThrow(/only one of --dry-run, --apply, or --preview/);
   });
 });
 

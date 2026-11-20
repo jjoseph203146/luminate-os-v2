@@ -3,7 +3,8 @@ import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
-import { getPublicEnv, getServiceRoleKey } from "@/platform/env";
+import { z } from "zod";
+import { EnvError, getPublicEnv, getServiceRoleKey } from "@/platform/env";
 
 export type Db = ReturnType<typeof createAdminClient>;
 
@@ -48,6 +49,21 @@ export function createAdminClient() {
   if (typeof window !== "undefined") throw new Error("Admin client is server-only");
   const env = getPublicEnv();
   return createClient<Database>(env.NEXT_PUBLIC_SUPABASE_URL, getServiceRoleKey(), {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
+
+/**
+ * Service-role client for the Won backfill preview.
+ * Uses the project URL and the service-role key only. The anon key is not required.
+ * Callers that must not write wrap the result with readOnlyClient before any query.
+ */
+export function createServiceRoleClient() {
+  if (typeof window !== "undefined") throw new Error("Admin client is server-only");
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "";
+  const parsed = z.url().safeParse(url);
+  if (!parsed.success) throw new EnvError(["NEXT_PUBLIC_SUPABASE_URL"]);
+  return createClient<Database>(parsed.data, getServiceRoleKey(), {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 }

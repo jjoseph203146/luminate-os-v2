@@ -63,7 +63,7 @@ The output includes business names and ids so the list can be checked. It does n
 
 ### How to run it
 
-Do this on the **staging** Supabase project (or a local database), after migration 0011 is applied there. Do not point the URL or the service-role key at production.
+Dry-run and apply run on the **staging** Supabase project (or a local database), after migration 0011 is applied there. Do not point those two modes at production.
 
 ```bash
 # Dry run. Reads and prints the plan. Writes nothing.
@@ -79,9 +79,30 @@ APP_ENV=staging npm run backfill:won -- --apply --confirm-url="$NEXT_PUBLIC_SUPA
 APP_ENV=staging BACKFILL_ALLOWED_PROJECT_REF=<staging-ref> npm run backfill:won -- --apply
 ```
 
-`APP_ENV` must be `local` or `staging`. Unset and `production` both refuse, before any read, even if `--confirm-url` matches. `--apply` also refuses unless `--confirm-url` equals `NEXT_PUBLIC_SUPABASE_URL` (a trailing slash does not matter) or `BACKFILL_ALLOWED_PROJECT_REF` lists that URL's project ref. Either confirmation is enough. This change does not set those variables. The script also uses `SUPABASE_SERVICE_ROLE_KEY` to connect. Do not point the URL or the key at production.
+For `--dry-run` and `--apply`, `APP_ENV` must be `local` or `staging`. Unset and `production` both refuse, before any read, even if `--confirm-url` matches. `--apply` also refuses unless `--confirm-url` equals `NEXT_PUBLIC_SUPABASE_URL` (a trailing slash does not matter) or `BACKFILL_ALLOWED_PROJECT_REF` lists that URL's project ref. Either confirmation is enough. `--confirm-url` does not authorize production. This change does not set those variables. The script also uses `SUPABASE_SERVICE_ROLE_KEY` to connect.
 
 A linked lead that loses a race leaves the extra client in place and records `linked: false` on that client. It does not delete the client.
+
+Use only one of `--dry-run`, `--apply`, or `--preview`.
+
+### Production preview
+
+`--preview` is the only mode that may point at production. It reads and prints the planned actions. It does not call apply. It does not create clients, link leads, or write audit rows. The plan is built through a read-only data-access object: the Supabase client it holds has no insert, update, upsert, delete, or rpc, and calling any of those throws before a request is sent.
+
+Jacob runs this himself, on his own machine, after migration 0011 is applied on production. The production service-role key stays on that machine. Do not commit it, paste it into chat, or put it in Vercel.
+
+```bash
+APP_ENV=production \
+NEXT_PUBLIC_SUPABASE_URL=https://<prod-ref>.supabase.co \
+SUPABASE_SERVICE_ROLE_KEY=<prod-service-role-key> \
+npm run backfill:won -- --preview --i-know-this-is-production
+```
+
+`APP_ENV`, `NEXT_PUBLIC_SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY` are the three variables he sets for this command. The URL is `https://<prod-ref>.supabase.co` for the production project. In production, `--preview` without `--i-know-this-is-production` refuses before any read. An unset `APP_ENV` refuses before any read. `--preview` together with `--apply` or `--dry-run` is an error.
+
+The first lines of the output are the banner: `mode: preview`, the target project ref (not the key), and `READ ONLY, nothing written`. Under that: business names and ids, counts, `payingCount`, the roster, and the action names. Emails, phones, and notes are not printed.
+
+On local or staging, `--preview` is the same read-only plan and does not need `--i-know-this-is-production`.
 
 ## Apply migration 0011
 
@@ -91,4 +112,4 @@ Rollback notes are at the top of `0011_lead_pipeline.sql`. Do not drop `leads_st
 
 ## Tests
 
-`src/domains/growth/rules.test.ts` covers matching, the 12-client plan, and a second plan that has nothing left to write. `service.test.ts` covers the Won gate, link versus create, lost reason, pipeline edits, note history, and a dry run that does not write. `migration.test.ts` checks that 0011 does not alter `leads_status_check`. `src/domains/clients/notes.test.ts` covers the previous text of a client note.
+`src/domains/growth/rules.test.ts` covers matching, the 12-client plan, a second plan that has nothing left to write, the preview guard, and mixed flags. `service.test.ts` covers the Won gate, link versus create, lost reason, pipeline edits, note history, a dry run that does not write, a production preview that reads and does not write, and `--apply` refusing when `APP_ENV` is production or unset. `readonly-db.test.ts` covers the read-only client. `scripts/backfill-won-clients.test.ts` covers the preview banner and the refusal to print emails, phones, or notes. `migration.test.ts` checks that 0011 does not alter `leads_status_check`. `src/domains/clients/notes.test.ts` covers the previous text of a client note.
