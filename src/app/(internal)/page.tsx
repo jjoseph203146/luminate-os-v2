@@ -257,7 +257,8 @@ export default async function TodayPage() {
             </div>
             <div className="text-[12px] text-dim">
               Payments are recorded from Stripe as they happen; Sync from Stripe (Settings → Stripe) fills in any it missed. Plan prices are what clients are set to pay, not money collected:{" "}
-              <Link href="/money" className="font-medium text-blue">see Money</Link> for paid-only MRR.
+              <Link href="/money" className="font-medium text-blue">see Money</Link> for paid-only MRR. The{" "}
+              <Link href="/dashboard" className="font-medium text-blue">weekly review</Link> keeps Won and deal value separate from paid revenue.
             </div>
           </section>
           <p className="mx-0.5 text-[12px] text-dim">Updated {ageLabel(data.generatedAt, now)}</p>

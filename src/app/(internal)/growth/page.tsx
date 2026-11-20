@@ -160,11 +160,12 @@ export default async function GrowthPage({ searchParams }: { searchParams: Searc
     <>
       <PageTitle title="Growth" sub="Leads, outreach and follow-ups" />
       <div className="flex flex-col gap-5">
-        <div className="flex">
+        <div className="flex flex-wrap items-center gap-4">
           <Link href="/growth?add=1" scroll={false} className={`${BTN_PRIMARY} inline-flex items-center gap-1.5`}>
             <Icon name="add" size={20} />
             Add lead
           </Link>
+          <Link href="/dashboard" className="text-[14px] font-medium text-blue">Weekly review</Link>
         </div>
 
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">

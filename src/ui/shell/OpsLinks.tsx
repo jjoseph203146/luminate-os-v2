@@ -7,6 +7,7 @@ import { Icon, type IconName } from "@/ui/Icon";
 type Item = { icon: IconName; label: string; href?: string; tag?: string };
 
 const ITEMS: Item[] = [
+  { icon: "dashboard", label: "Dashboard", href: "/dashboard" },
   { icon: "description", label: "Documents", tag: "Not built" },
   { icon: "summarize", label: "Reports", tag: "Not built" },
   { icon: "monitor_heart", label: "Monitoring", href: "/monitoring" },
