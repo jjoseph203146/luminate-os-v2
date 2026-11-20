@@ -4,10 +4,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
 import { isUndefinedColumn, isUndefinedTable } from "@/platform/db/schema-errors";
+import type { ReadOnlyDb } from "./readonly-db";
 import { isLostReason, stageOf, type LeadFields } from "./rules";
 import type { ActivityDirection, ActivityKind, Lead, LeadKind, LeadStatus, Stage } from "./types";
 
 type Db = SupabaseClient<Database>;
+
+/** Selects use the Supabase row types. A preview client is still the read-only wrapper at runtime, so a write throws. */
+function asDb(db: Db | ReadOnlyDb): Db {
+  return db as Db;
+}
 
 const LIMIT = 500;
 
@@ -89,7 +95,10 @@ export async function listLeads(db: Db): Promise<Lead[]> {
 }
 
 /** True when migration 0011's lead columns and lead_activities table are both visible. */
-export async function pipelineReady(db: Db): Promise<boolean> {
+export async function pipelineReady(db: ReadOnlyDb): Promise<boolean>;
+export async function pipelineReady(db: Db): Promise<boolean>;
+export async function pipelineReady(db: Db | ReadOnlyDb): Promise<boolean> {
+  db = asDb(db);
   const column = await db.from("leads").select("client_id").limit(1);
   if (column.error) {
     if (missingPipelineColumn(column.error)) return false;
@@ -292,7 +301,10 @@ export interface ClientCandidateRow {
   lifetimeValue: number;
 }
 
-export async function listClientCandidates(db: Db): Promise<ClientCandidateRow[]> {
+export async function listClientCandidates(db: ReadOnlyDb): Promise<ClientCandidateRow[]>;
+export async function listClientCandidates(db: Db): Promise<ClientCandidateRow[]>;
+export async function listClientCandidates(db: Db | ReadOnlyDb): Promise<ClientCandidateRow[]> {
+  db = asDb(db);
   const { data, error } = await db.from("clients").select("id,business_name,email,contact_name,phone,archived_at,lifetime_value").limit(LIMIT);
   if (error || !data) throw new Error("Could not list clients");
   if (data.length >= LIMIT) throw new Error("Too many clients to read in one pass.");
@@ -308,7 +320,10 @@ export async function listClientCandidates(db: Db): Promise<ClientCandidateRow[]
 }
 
 /** Client ids that have at least one paid revenue row with a positive amount. */
-export async function listPaidClientIds(db: Db): Promise<Set<string>> {
+export async function listPaidClientIds(db: ReadOnlyDb): Promise<Set<string>>;
+export async function listPaidClientIds(db: Db): Promise<Set<string>>;
+export async function listPaidClientIds(db: Db | ReadOnlyDb): Promise<Set<string>> {
+  db = asDb(db);
   const ids = new Set<string>();
   const page = 1000;
   for (let from = 0; from < 20_000; from += page) {
@@ -393,7 +408,10 @@ export interface BackfillLeadRow {
 }
 
 /** Every lead the backfill needs. Refuses a full page so a truncated read cannot skip someone. */
-export async function listLeadsForBackfill(db: Db): Promise<BackfillLeadRow[]> {
+export async function listLeadsForBackfill(db: ReadOnlyDb): Promise<BackfillLeadRow[]>;
+export async function listLeadsForBackfill(db: Db): Promise<BackfillLeadRow[]>;
+export async function listLeadsForBackfill(db: Db | ReadOnlyDb): Promise<BackfillLeadRow[]> {
+  db = asDb(db);
   const { data, error } = await db.from("leads").select("id,name,business_name,email,phone,status,client_id").limit(LIMIT);
   if (error && missingPipelineColumn(error)) throw new PipelineNotReadyError();
   if (error || !data) throw new Error("Could not list leads");

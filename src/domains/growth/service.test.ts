@@ -7,6 +7,14 @@ const mocks = vi.hoisted(() => ({
       this.name = "PipelineNotReadyError";
     }
   },
+  serviceRole: {
+    from: vi.fn(() => ({})),
+    insert: vi.fn(),
+    update: vi.fn(),
+    upsert: vi.fn(),
+    delete: vi.fn(),
+    rpc: vi.fn(),
+  },
   writeAudit: vi.fn(),
   getLead: vi.fn(),
   findRecentLeadId: vi.fn(),
@@ -29,7 +37,11 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/platform/audit/audit", () => ({ writeAudit: mocks.writeAudit }));
-vi.mock("@/platform/db/server", () => ({ createAdminClient: () => ({}), readDb: async () => ({}) }));
+vi.mock("@/platform/db/server", () => ({
+  createAdminClient: () => ({}),
+  createServiceRoleClient: () => mocks.serviceRole,
+  readDb: async () => ({}),
+}));
 vi.mock("@/domains/admin/service", () => ({ getCalendar: vi.fn() }));
 vi.mock("./repo", () => ({
   listLeads: vi.fn(),
@@ -58,6 +70,8 @@ vi.mock("./repo", () => ({
 }));
 
 import { createLead, deleteLead, MANUAL_DUPLICATE_WINDOW_MS, patchLead, runWonBackfill, setLeadFollowUp, setLeadStage, updateLead } from "./service";
+import * as backfillRead from "./backfill-read";
+import { READ_ONLY_WRITE_METHODS, ReadOnlyViolation } from "./readonly-db";
 import { PermissionError, RateLimitError, RuleError, ValidationError } from "@/platform/errors";
 import type { Actor } from "@/platform/auth/types";
 
@@ -425,6 +439,92 @@ describe("runWonBackfill", () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://stagingref.supabase.co";
     await expect(runWonBackfill(system, { apply: true, confirmUrl: "https://stagingref.supabase.co" })).rejects.toThrow(/production/);
     expect(mocks.listLeadsForBackfill).not.toHaveBeenCalled();
+  });
+
+  it("preview in production reads a plan and writes nothing", async () => {
+    process.env.APP_ENV = "production";
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://prodref.supabase.co";
+    mocks.pipelineReady.mockResolvedValue(true);
+    mocks.listClientCandidates.mockResolvedValue([{ id: CLIENT, businessName: "Nova Barbershop", email: "marcus@nova.example", contactName: "Marcus Rowe", phone: "(803) 555-0142", archived: false, lifetimeValue: 40 }]);
+    mocks.listLeadsForBackfill.mockResolvedValue([{ id: ID, name: "Marcus Rowe", businessName: "Nova Barbershop", email: "marcus@nova.example", phone: "(803) 555-0142", notes: "private note", stage: "new_lead", clientId: null }]);
+    const accessSpy = vi.spyOn(backfillRead, "createBackfillReadAccess");
+    try {
+      const r = await runWonBackfill(system, { apply: false, preview: true, acknowledgeProduction: true });
+      expect(r).toMatchObject({ apply: false, preview: true, target: "production", projectRef: "prodref", payingCount: 1, applied: [] });
+      expect(r.actions).toEqual([{ op: "link", leadId: ID, clientId: CLIENT, how: "email", markWon: true }]);
+      expect(r.roster.clients[0]?.businessName).toBe("Nova Barbershop");
+      const printed = JSON.stringify(r);
+      expect(printed).not.toContain("marcus@");
+      expect(printed).not.toContain("555-0142");
+      expect(printed).not.toContain("private note");
+      expect(printed).not.toMatch(/"(email|phone|notes)":/);
+
+      expect(accessSpy).toHaveBeenCalledTimes(1);
+      expect(accessSpy).toHaveBeenCalledWith(mocks.serviceRole);
+      const access = accessSpy.mock.results[0]?.value as object;
+      expect(Object.keys(access).sort()).toEqual(["listClientCandidates", "listLeadsForBackfill", "listPaidClientIds", "pipelineReady"]);
+      for (const method of READ_ONLY_WRITE_METHODS) {
+        expect(method in access).toBe(false);
+        expect(() => (access as Record<string, () => void>)[method]!()).toThrow(ReadOnlyViolation);
+      }
+
+      const db = mocks.listClientCandidates.mock.calls[0]?.[0] as object;
+      expect(db).not.toBe(mocks.serviceRole);
+      expect(mocks.pipelineReady.mock.calls[0]?.[0]).toBe(db);
+      expect(mocks.listPaidClientIds.mock.calls[0]?.[0]).toBe(db);
+      expect(mocks.listLeadsForBackfill.mock.calls[0]?.[0]).toBe(db);
+      for (const method of READ_ONLY_WRITE_METHODS) {
+        expect(method in db).toBe(false);
+        expect(Object.keys(db)).not.toContain(method);
+        expect(() => (db as Record<string, () => void>)[method]!()).toThrow(ReadOnlyViolation);
+      }
+      const query = (db as { from: (table: string) => object }).from("clients");
+      for (const method of ["insert", "update", "upsert", "delete"] as const) {
+        expect(method in query).toBe(false);
+        expect(() => (query as Record<string, () => void>)[method]!()).toThrow(ReadOnlyViolation);
+      }
+      expect(mocks.serviceRole.insert).not.toHaveBeenCalled();
+      expect(mocks.serviceRole.update).not.toHaveBeenCalled();
+      expect(mocks.serviceRole.upsert).not.toHaveBeenCalled();
+      expect(mocks.serviceRole.delete).not.toHaveBeenCalled();
+      expect(mocks.serviceRole.rpc).not.toHaveBeenCalled();
+      expect(mocks.insertClient).not.toHaveBeenCalled();
+      expect(mocks.setLeadClient).not.toHaveBeenCalled();
+      expect(mocks.setLeadStatus).not.toHaveBeenCalled();
+      expect(mocks.insertLeadActivity).not.toHaveBeenCalled();
+      expect(mocks.insertAccount).not.toHaveBeenCalled();
+      expect(mocks.updateLead).not.toHaveBeenCalled();
+      expect(mocks.deleteLead).not.toHaveBeenCalled();
+      expect(mocks.writeAudit).not.toHaveBeenCalled();
+    } finally {
+      accessSpy.mockRestore();
+    }
+  });
+
+  it("preview refuses production without the acknowledgement, before it reads", async () => {
+    process.env.APP_ENV = "production";
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://prodref.supabase.co";
+    await expect(runWonBackfill(system, { apply: false, preview: true })).rejects.toThrow(/i-know-this-is-production/);
+    expect(mocks.listLeadsForBackfill).not.toHaveBeenCalled();
+    expect(mocks.serviceRole.from).not.toHaveBeenCalled();
+    expect(mocks.writeAudit).not.toHaveBeenCalled();
+  });
+
+  it("preview with apply set refuses before it reads", async () => {
+    process.env.APP_ENV = "staging";
+    await expect(runWonBackfill(system, { apply: true, preview: true, acknowledgeProduction: true })).rejects.toThrow(/preview/);
+    expect(mocks.listLeadsForBackfill).not.toHaveBeenCalled();
+    expect(mocks.insertClient).not.toHaveBeenCalled();
+    expect(mocks.writeAudit).not.toHaveBeenCalled();
+  });
+
+  it("apply refuses when APP_ENV is unset, before it reads", async () => {
+    delete process.env.APP_ENV;
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://stagingref.supabase.co";
+    await expect(runWonBackfill(system, { apply: true, confirmUrl: "https://stagingref.supabase.co" })).rejects.toThrow(/production/);
+    expect(mocks.listLeadsForBackfill).not.toHaveBeenCalled();
+    expect(mocks.insertClient).not.toHaveBeenCalled();
+    expect(mocks.writeAudit).not.toHaveBeenCalled();
   });
 
   it("apply creates a client for an unlinked Won lead", async () => {

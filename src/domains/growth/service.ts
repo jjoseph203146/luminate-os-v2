@@ -2,7 +2,7 @@
 import { assertCan } from "@/platform/auth/permissions";
 import type { Actor } from "@/platform/auth/types";
 import { toLocalDate } from "@/platform/calendar/business-days";
-import { createAdminClient, readDb } from "@/platform/db/server";
+import { createAdminClient, createServiceRoleClient, readDb } from "@/platform/db/server";
 import { writeAudit } from "@/platform/audit/audit";
 import { PermissionError, RateLimitError, RuleError, ValidationError } from "@/platform/errors";
 import { parseInput } from "@/platform/auth/schemas";
@@ -11,6 +11,7 @@ import { stampActor } from "@/platform/audit/stamp";
 import { getCalendar } from "@/domains/admin/service";
 import {
   assertBackfillEnvironment,
+  assertBackfillPreviewAllowed,
   assertBackfillWriteAllowed,
   BOT_CANNOT_WIN,
   botTriesToWin,
@@ -20,6 +21,7 @@ import {
   dueNow,
   isPayingClient,
   planWonBackfill,
+  projectRefFromSupabaseUrl,
   STAGE_LABEL,
   statusOf,
   summarize,
@@ -28,6 +30,8 @@ import {
   type WonBackfillAction,
   type WonBackfillPlan,
 } from "./rules";
+import * as backfillRead from "./backfill-read";
+import type { BackfillReadAccess } from "./backfill-read";
 import { createLeadSchema, deleteLeadSchema, leadFollowUpSchema, leadStageSchema, patchLeadSchema, updateLeadSchema } from "./schemas";
 import { leadInputFromRaw, WEBSITE_SOURCE } from "./intake";
 import * as repo from "./repo";
@@ -469,10 +473,14 @@ export async function deleteLead(actor: Actor, raw: unknown, now: Date = new Dat
 const BACKFILL_ACTOR = "won-backfill";
 
 export interface WonBackfillResult extends WonBackfillPlan {
-  /** The APP_ENV the guard accepted. Never production. */
-  target: "local" | "staging";
+  /** APP_ENV the guard accepted. `production` is returned only by preview. */
+  target: "local" | "staging" | "production";
+  /** Project ref named in a preview banner. Omitted on dry-run and apply. */
+  projectRef?: string | null;
   apply: boolean;
-  /** Writes that happened. Empty on a dry run. */
+  /** True only for the read-only preview path. Dry-run leaves this unset. */
+  preview?: boolean;
+  /** Writes that happened. Empty on a dry run and on preview. */
   applied: { op: string; leadId: string; clientId: string; created: boolean }[];
   /** Business names and ids so a dry run can be checked. No emails, phones, or notes. */
   roster: {
@@ -481,15 +489,73 @@ export interface WonBackfillResult extends WonBackfillPlan {
   };
 }
 
+export interface WonBackfillOptions {
+  apply: boolean;
+  confirmUrl?: string;
+  /** Read-only plan. The only mode that may run when APP_ENV is production. */
+  preview?: boolean;
+  /** Required with preview when APP_ENV is production. Ignored by --apply. */
+  acknowledgeProduction?: boolean;
+}
+
+function planFromRows(clients: repo.ClientCandidateRow[], paid: Set<string>, leads: repo.BackfillLeadRow[]): { plan: WonBackfillPlan; roster: WonBackfillResult["roster"] } {
+  const backfillClients = clients.map((c) => ({
+    id: c.id,
+    businessName: c.businessName,
+    email: c.email,
+    contactName: c.contactName,
+    archived: c.archived,
+    paying: isPayingClient({ archived: c.archived, lifetimeValue: c.lifetimeValue, paidRevenue: paid.has(c.id) }),
+  }));
+  const plan = planWonBackfill(leads, backfillClients);
+  const roster: WonBackfillResult["roster"] = {
+    clients: backfillClients.map((c) => ({ id: c.id, businessName: c.businessName, paying: c.paying, archived: c.archived })),
+    leads: leads.map((l) => ({ id: l.id, businessName: l.businessName, stage: l.stage, clientId: l.clientId })),
+  };
+  return { plan, roster };
+}
+
+/**
+ * Preview reads through BackfillReadAccess and returns. This function does not call apply,
+ * and it never receives a client that can write.
+ */
+async function loadPreviewPlan(access: BackfillReadAccess): Promise<{ plan: WonBackfillPlan; roster: WonBackfillResult["roster"] }> {
+  if (!(await access.pipelineReady())) throw new RuleError(MIGRATION_NEEDED);
+  const [clients, paid, leads] = await Promise.all([access.listClientCandidates(), access.listPaidClientIds(), access.listLeadsForBackfill()]);
+  return planFromRows(clients, paid, leads);
+}
+
+async function previewWonBackfill(options: WonBackfillOptions): Promise<WonBackfillResult> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  let target: "local" | "staging" | "production";
+  try {
+    target = assertBackfillPreviewAllowed({
+      appEnv: process.env.APP_ENV,
+      acknowledgeProduction: options.acknowledgeProduction === true,
+      supabaseUrl,
+    });
+  } catch (error) {
+    throw new RuleError(error instanceof Error ? error.message : "Refusing to preview the Won backfill.");
+  }
+  const projectRef = supabaseUrl ? projectRefFromSupabaseUrl(supabaseUrl) : null;
+  const access = backfillRead.createBackfillReadAccess(createServiceRoleClient());
+  const { plan, roster } = await loadPreviewPlan(access);
+  return { ...plan, target, projectRef, apply: false, preview: true, applied: [], roster };
+}
+
 /**
  * Links or creates clients for paying clients and for Won leads that are not linked yet.
  * Dry-run (`apply: false`) reads and returns the plan. It writes nothing.
- * Refuses to run unless APP_ENV is local or staging, before it reads.
+ * Dry-run and apply refuse unless APP_ENV is local or staging, before any read.
+ * Preview is the only mode allowed when APP_ENV is production, and it cannot write.
  * The bot cannot call this.
  */
-export async function runWonBackfill(actor: Actor, options: { apply: boolean; confirmUrl?: string }, now: Date = new Date()): Promise<WonBackfillResult> {
+export async function runWonBackfill(actor: Actor, options: WonBackfillOptions, now: Date = new Date()): Promise<WonBackfillResult> {
   assertCan(actor, "growth.backfill");
   if (actor.type !== "owner" && !(actor.type === "system" && actor.name === BACKFILL_ACTOR)) throw new PermissionError();
+  if (options.preview && options.apply) throw new RuleError("Use either --preview or --apply.");
+  if (options.preview) return previewWonBackfill(options);
+
   let target: "local" | "staging";
   try {
     target = options.apply
@@ -506,19 +572,7 @@ export async function runWonBackfill(actor: Actor, options: { apply: boolean; co
   const db = createAdminClient();
   if (!(await repo.pipelineReady(db))) throw new RuleError(MIGRATION_NEEDED);
   const [clients, paid, leads] = await Promise.all([repo.listClientCandidates(db), repo.listPaidClientIds(db), repo.listLeadsForBackfill(db)]);
-  const backfillClients = clients.map((c) => ({
-    id: c.id,
-    businessName: c.businessName,
-    email: c.email,
-    contactName: c.contactName,
-    archived: c.archived,
-    paying: isPayingClient({ archived: c.archived, lifetimeValue: c.lifetimeValue, paidRevenue: paid.has(c.id) }),
-  }));
-  const plan = planWonBackfill(leads, backfillClients);
-  const roster: WonBackfillResult["roster"] = {
-    clients: backfillClients.map((c) => ({ id: c.id, businessName: c.businessName, paying: c.paying, archived: c.archived })),
-    leads: leads.map((l) => ({ id: l.id, businessName: l.businessName, stage: l.stage, clientId: l.clientId })),
-  };
+  const { plan, roster } = planFromRows(clients, paid, leads);
   if (!options.apply) return { ...plan, target, apply: false, applied: [], roster };
 
   const applied: WonBackfillResult["applied"] = [];

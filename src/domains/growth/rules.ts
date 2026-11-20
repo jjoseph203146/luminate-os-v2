@@ -343,6 +343,53 @@ export function assertBackfillWriteAllowed(input: {
   return env;
 }
 
+/**
+ * Preview may read production. It is the only mode that may.
+ * Production also needs the explicit acknowledgement. Local and staging do not.
+ * An unset APP_ENV still refuses, before any read. This does not allow `--apply`.
+ */
+export function assertBackfillPreviewAllowed(input: {
+  appEnv: string | undefined;
+  acknowledgeProduction: boolean;
+  supabaseUrl?: string;
+}): "local" | "staging" | "production" {
+  if (input.appEnv === "local" || input.appEnv === "staging") return input.appEnv;
+  if (input.appEnv === "production") {
+    if (!input.acknowledgeProduction) {
+      throw new Error("Refusing to read production. Preview needs --preview and --i-know-this-is-production. It writes nothing.");
+    }
+    const ref = input.supabaseUrl ? projectRefFromSupabaseUrl(input.supabaseUrl) : null;
+    if (!ref) {
+      throw new Error("Refusing to read production. Set NEXT_PUBLIC_SUPABASE_URL to https://<ref>.supabase.co so the preview can name the project. It writes nothing.");
+    }
+    return "production";
+  }
+  throw new Error("The Won backfill preview runs only when APP_ENV is local, staging, or production. An unset APP_ENV refuses before any read.");
+}
+
+export interface BackfillCommand {
+  mode: "dry-run" | "apply" | "preview";
+  confirmUrl?: string;
+  acknowledgeProduction: boolean;
+}
+
+/** Flags for the Won backfill script. Mixed modes throw. `--dry-run` stays the default. */
+export function parseBackfillMode(argv: readonly string[]): BackfillCommand {
+  const apply = argv.includes("--apply");
+  const dry = argv.includes("--dry-run");
+  const preview = argv.includes("--preview");
+  const chosen = [apply, dry, preview].filter(Boolean).length;
+  if (chosen > 1) throw new Error("Use only one of --dry-run, --apply, or --preview.");
+  let mode: BackfillCommand["mode"] = "dry-run";
+  if (preview) mode = "preview";
+  else if (apply) mode = "apply";
+  return {
+    mode,
+    confirmUrl: confirmUrlFromArgv(argv),
+    acknowledgeProduction: argv.includes("--i-know-this-is-production"),
+  };
+}
+
 /** The value of a single `--confirm-url=<url>` argument, or undefined when it was not passed. */
 export function confirmUrlFromArgv(argv: readonly string[]): string | undefined {
   const found = argv.filter((arg) => arg.startsWith("--confirm-url="));
